@@ -309,3 +309,9 @@ To learn more about what data is collected, how we use it and how you can change
 ## Contributing
 
 We provide this source code as-is and are currently not accepting outside contributions.
+
+# Creative-Self-Motivating
+
+개인 Omniverse Kit 앱 실험 저장소.
+
+한국어 구조 설명: [docs/README.md](./docs/README.md)
