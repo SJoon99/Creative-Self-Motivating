@@ -17,6 +17,7 @@ import omni.kit.test
 
 # Extension for writing UI tests (to simulate UI interaction)
 import omni.kit.ui_test as ui_test
+import omni.usd
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the
 # root of module will make it auto-discoverable by omni.kit.test
@@ -51,11 +52,22 @@ class Test(omni.kit.test.AsyncTestCase):
         await create_button.click()
         self.assertEqual(
             status_label.widget.text,
-            "Create Twin Scene requested. The next step will generate the greenhouse USD prims.",
+            "Twin scene created: arched greenhouse, soil beds, 64 strawberry plants, sensors, LEDs, and fans.",
         )
+
+        stage = omni.usd.get_context().get_stage()
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Greenhouse"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Greenhouse/ArchedRoofCover_Ridge"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/GrowingBeds/Bed_01"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/GrowingBeds/SoilTop_01"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Plants/Bed_01_Plant_01/LeafCluster"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Plants/Bed_01_Plant_01/Leaf_01"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Sensors/CO2Sensor"))
 
         await scenario_button.click()
         self.assertEqual(
             status_label.widget.text,
-            "Demo scenario selected: 16h photoperiod + CO2, expected shipment 2026-12-22, yield score 87.",
+            "Recommended scenario applied: 16h photoperiod + CO2. Shipment target is met with yield score 87.",
         )
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Plants/Bed_01_Plant_01/Fruit"))

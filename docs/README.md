@@ -20,6 +20,7 @@ flowchart LR
 | [02-build-and-launch-flow.md](./02-build-and-launch-flow.md) | `repo.sh` 기준 동작 흐름 | "빌드/실행 때 무슨 일이?" |
 | [03-kit-app-and-extension.md](./03-kit-app-and-extension.md) | `.kit`, 앱, Extension 관계 | "Kit 구조 감 잡기" |
 | [04-git-workflow.md](./04-git-workflow.md) | 이 저장소 Git 관리 방식 | "GitHub에 어떻게 올리지?" |
+| [Progess/2026-05-21-smartfarm-twin-poc.md](./Progess/2026-05-21-smartfarm-twin-poc.md) | 스마트팜 트윈 POC 진행 현황 | "지금 어디까지 됐지?" |
 
 ## 현재 프로젝트 핵심
 

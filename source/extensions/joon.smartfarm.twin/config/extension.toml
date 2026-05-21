@@ -23,6 +23,7 @@ repository = "https://github.com/SJoon99/Creative-Self-Motivating"  # URL of the
 
 [dependencies]
 "omni.kit.uiapp" = {}
+"omni.usd" = {}
 
 
 [settings]
