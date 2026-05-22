@@ -8,6 +8,8 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
+from pathlib import Path
+
 import omni.ext
 import omni.ui as ui
 import omni.usd
@@ -16,6 +18,8 @@ from pxr import Gf, Sdf, UsdGeom, UsdLux
 
 DEFAULT_STATUS = "Ready to create the first smart farm twin scene."
 SMART_FARM_PATH = "/World/SmartFarm"
+EXTENSION_ROOT = Path(__file__).resolve().parents[3]
+ASSET_DIR = EXTENSION_ROOT / "assets"
 GREENHOUSE_LENGTH = 56.0
 GREENHOUSE_WIDTH = 18.0
 GREENHOUSE_WALL_HEIGHT = 4.2
@@ -123,9 +127,22 @@ class MyExtension(omni.ext.IExt):
         stage.SetDefaultPrim(world.GetPrim())
         UsdGeom.Xform.Define(stage, SMART_FARM_PATH)
 
+        greenhouse_asset = self._find_asset("greenhouse")
+        strawberry_asset = self._find_asset("strawberry_plant")
+
         self._create_floor(stage)
-        self._create_greenhouse(stage)
-        self._create_growing_beds(stage)
+        if greenhouse_asset:
+            UsdGeom.Xform.Define(stage, f"{SMART_FARM_PATH}/Greenhouse")
+            self._reference_asset(
+                stage,
+                f"{SMART_FARM_PATH}/Greenhouse/ExternalModel",
+                greenhouse_asset,
+                translation=(0, 0, 0),
+                scale=(1.0, 1.0, 1.0),
+            )
+        else:
+            self._create_greenhouse(stage)
+        self._create_growing_beds(stage, strawberry_asset)
         self._create_actuators(stage)
         self._create_sensors(stage)
         self._create_lighting(stage)
@@ -184,7 +201,7 @@ class MyExtension(omni.ext.IExt):
         for z in (-half_width, -4.5, 0, 4.5, half_width):
             self._create_cube(stage, f"{group}/LongBeam_{self._safe_name(z)}", (0, 4.2 if abs(z) == half_width else 7.1, z), (GREENHOUSE_LENGTH, 0.12, 0.12), frame_color)
 
-    def _create_growing_beds(self, stage):
+    def _create_growing_beds(self, stage, strawberry_asset=None):
         beds_group = f"{SMART_FARM_PATH}/GrowingBeds"
         plants_group = f"{SMART_FARM_PATH}/Plants"
         UsdGeom.Xform.Define(stage, beds_group)
@@ -216,7 +233,7 @@ class MyExtension(omni.ext.IExt):
             for marker_index, x in enumerate((-18.0, -9.0, 0.0, 9.0, 18.0), start=1):
                 self._create_soil_clump(stage, beds_group, bed_index, marker_index, x, z)
             for plant_index, x in enumerate((-20, -14, -8, -2, 2, 8, 14, 20), start=1):
-                self._create_plant(stage, plants_group, bed_index, plant_index, x, z)
+                self._create_plant(stage, plants_group, bed_index, plant_index, x, z, strawberry_asset)
 
     def _create_actuators(self, stage):
         group = f"{SMART_FARM_PATH}/Actuators"
@@ -257,9 +274,21 @@ class MyExtension(omni.ext.IExt):
         sun.CreateAngleAttr(0.8)
         self._set_transform(sun.GetPrim(), rotation=(-45, 35, 0))
 
-    def _create_plant(self, stage, group, bed_index, plant_index, x, z):
+    def _create_plant(self, stage, group, bed_index, plant_index, x, z, strawberry_asset=None):
         base = f"{group}/Bed_{bed_index:02d}_Plant_{plant_index:02d}"
         UsdGeom.Xform.Define(stage, base)
+        if strawberry_asset:
+            self._reference_asset(
+                stage,
+                f"{base}/ExternalModel",
+                strawberry_asset,
+                translation=(x, 0.55, z),
+                scale=(0.45, 0.45, 0.45),
+            )
+            if plant_index in (2, 5, 8):
+                self._create_sphere(stage, f"{base}/Fruit", (x - 0.16, 1.08, z - 0.10), scale=(0.09, 0.08, 0.08), color=(0.88, 0.05, 0.06))
+            return
+
         self._create_cylinder(stage, f"{base}/Stem", (x, 0.78, z), radius=0.045, depth=0.36, color=(0.12, 0.36, 0.08))
         self._create_leaf(stage, f"{base}/Leaf_01", (x - 0.18, 0.98, z), (-12, 0, 28))
         self._create_leaf(stage, f"{base}/Leaf_02", (x + 0.18, 0.98, z), (-12, 0, -28))
@@ -390,6 +419,12 @@ class MyExtension(omni.ext.IExt):
         self._set_transform(cylinder.GetPrim(), translation=translation)
         return cylinder
 
+    def _reference_asset(self, stage, path, asset_path, translation, scale, rotation=None):
+        xform = UsdGeom.Xform.Define(stage, path)
+        xform.GetPrim().GetReferences().AddReference(str(asset_path))
+        self._set_transform(xform.GetPrim(), translation=translation, rotation=rotation, scale=scale)
+        return xform
+
     def _set_transform(self, prim, translation=None, rotation=None, scale=None):
         xformable = UsdGeom.Xformable(prim)
         xformable.ClearXformOpOrder()
@@ -412,6 +447,13 @@ class MyExtension(omni.ext.IExt):
 
     def _safe_name(self, value):
         return str(value).replace("-", "neg").replace(".", "_")
+
+    def _find_asset(self, name):
+        for extension in (".usd", ".usda", ".usdc"):
+            candidate = ASSET_DIR / f"{name}{extension}"
+            if candidate.exists():
+                return candidate
+        return None
 
     def on_shutdown(self):
         """This is called every time the extension is deactivated. It is used

@@ -23,7 +23,7 @@ flowchart LR
 | UI 패널 | 1차 완료 | 기능 확인용 |
 | 트윈 씬 생성 | 1차 완료 | primitive 기반 |
 | 데모 시나리오 | 1차 완료 | 조기출하 추천 흐름 |
-| 현실적 3D 모델 | 미완료 | 외부 asset 필요 |
+| 현실적 3D 모델 | 준비 중 | `assets/` reference 구조 추가 |
 | 자동 카메라/프레이밍 | 미완료 | 다음 개선 후보 |
 
 ## 코드 위치
@@ -36,6 +36,10 @@ source/
 │
 └─ extensions/
    └─ joon.smartfarm.twin/
+      ├─ assets/
+      │  ├─ greenhouse.usd
+      │  └─ strawberry_plant.usd
+      │
       ├─ config/extension.toml
       │  └─ omni.usd dependency 추가
       │
@@ -111,6 +115,23 @@ Smart Farm Twin
    └─ Sun
 ```
 
+외부 모델이 있을 때
+
+```text
+assets/greenhouse.usd
+  -> /World/SmartFarm/Greenhouse/ExternalModel reference
+
+assets/strawberry_plant.usd
+  -> /World/SmartFarm/Plants/Bed_XX_Plant_XX/ExternalModel reference
+```
+
+외부 모델이 없을 때
+
+```text
+greenhouse.usd 없음       -> primitive 아치형 온실 생성
+strawberry_plant.usd 없음 -> primitive 딸기 식물 proxy 생성
+```
+
 ## Run Demo Scenario
 
 목표: `12/22 조기출하 가능성`을 트윈에서 시각적으로 보여주기
@@ -147,9 +168,9 @@ CO2 sensor     파란색 강조
 └─ 외부 camera prim은 제거했지만 기본 view 보정 필요
 
 asset 문제
-├─ 실제 딸기 모델 없음
-├─ 실제 온실 모델 없음
-└─ glTF/FBX/USD import pipeline 미구현
+├─ 실제 딸기 모델 파일은 아직 없음
+├─ 실제 온실 모델 파일은 아직 없음
+└─ USD reference loader는 추가됨
 ```
 
 ## 검증 완료
@@ -190,10 +211,11 @@ flowchart TD
 우선순위
 
 1. `/World/SmartFarm` 자동 선택 + viewport frame
-2. `assets/` 폴더 추가
-3. 외부 모델 loader 구현
-4. 실제 딸기 plant 모델 1개 배치 후 복제
-5. 실제 greenhouse 모델 또는 더 정교한 mesh 적용
+2. 실제 딸기 plant 모델 1개 확보
+3. 실제 greenhouse 모델 확보
+4. Asset Importer로 USD 변환
+5. `assets/`에 정해진 파일명으로 배치
+6. scale/rotation/placement 튜닝
 
 ## 외부 asset 기준
 
@@ -213,4 +235,16 @@ flowchart TD
 2순위: 교육 목적 허용
 3순위: CC BY, 출처 명시 가능할 때만
 비추천: NonCommercial / 불명확한 무료 모델
+```
+
+현재 loader가 바로 찾는 파일명
+
+```text
+source/extensions/joon.smartfarm.twin/assets/greenhouse.usd
+source/extensions/joon.smartfarm.twin/assets/greenhouse.usda
+source/extensions/joon.smartfarm.twin/assets/greenhouse.usdc
+
+source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usd
+source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usda
+source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usdc
 ```
