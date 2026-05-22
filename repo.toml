@@ -114,7 +114,10 @@ publish_pip_cache = false
 
 [repo_precache_exts]
 # Apps to run and precache
-apps = ["${root}/source/apps/joon.my_editor.kit"]
+apps = [
+    "${root}/source/apps/joon.my_editor.kit",
+    "${root}/source/apps/joon.smartfarm_composer.kit",
+]
 
 registries = [
     { name = "kit/default", url = "https://ovextensionsprod.blob.core.windows.net/exts/kit/prod/${kit_version_major}/shared" },
