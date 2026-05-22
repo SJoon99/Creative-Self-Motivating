@@ -36,3 +36,8 @@ deps/**/user.toml
 
 # Streaming EventTrace
 *.etli
+
+# Large local 3D asset packs for Smart Farm Twin.
+/source/extensions/joon.smartfarm.twin/assets/official/
+/source/extensions/joon.smartfarm.twin/assets/local/
+/source/extensions/joon.smartfarm.twin/assets/**/*.zip

@@ -449,10 +449,11 @@ class MyExtension(omni.ext.IExt):
         return str(value).replace("-", "neg").replace(".", "_")
 
     def _find_asset(self, name):
-        for extension in (".usd", ".usda", ".usdc"):
-            candidate = ASSET_DIR / f"{name}{extension}"
-            if candidate.exists():
-                return candidate
+        for directory in (ASSET_DIR / "local", ASSET_DIR):
+            for extension in (".usd", ".usda", ".usdc"):
+                candidate = directory / f"{name}{extension}"
+                if candidate.exists():
+                    return candidate
         return None
 
     def on_shutdown(self):
