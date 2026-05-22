@@ -6,15 +6,13 @@
 
 ```text
 assets/
-├─ local/                  로컬 전용 선택 자산, git 제외
-│  ├─ greenhouse.usd       또는 greenhouse.usda / greenhouse.usdc
-│  └─ strawberry_plant.usd 또는 strawberry_plant.usda / strawberry_plant.usdc
 ├─ official/               공식 asset pack 압축 해제 위치, git 제외
-├─ greenhouse.usd          공유 가능한 작은 자산일 때만 사용
-└─ strawberry_plant.usd    공유 가능한 작은 자산일 때만 사용
+├─ greenhouse.usd          또는 greenhouse.usda / greenhouse.usdc
+└─ strawberry_plant.usd    또는 strawberry_plant.usda / strawberry_plant.usdc
 ```
 
-`Create Twin Scene` 실행 시 `assets/local/`을 먼저 찾고, 없으면 `assets/` 루트를 찾는다.
+`Create Twin Scene` 실행 시 위 파일명이 있을 때만 외부 USD를 참조한다.
+위 파일명은 symlink로 쓸 수 있고 git에서 제외한다.
 
 ## 권장 작업 흐름
 
@@ -39,23 +37,15 @@ assets/official/
 └─ tower_demo/     AECO_TowerDemoPack_NVD@10012.zip 압축 해제
 ```
 
-현재 임시 연결:
-
-```text
-assets/local/strawberry_plant.usd
-  -> assets/official/tower_demo/.../Assets/ArchVis/Residential/Plants/Plant_Succulent_01.usd
-```
-
-이 파일은 딸기 전용 모델이 아니라 외부 USD 참조 테스트용 식물 모델이다.
+현재 자동 연결된 공식 asset pack USD는 없다.
 
 ## Omniverse에서 확인하는 순서
 
 ```text
 1. 앱 실행
-2. Smart Farm Twin 창에서 Create Twin Scene
-3. /World/SmartFarm/Plants 아래 Plant_* 확인
-4. 식물 모델이 마음에 안 들면 assets/local/strawberry_plant.usd 링크 교체
-5. 다시 Create Twin Scene
+2. Content Browser 또는 File > Open으로 assets/official/ 아래 USD 직접 확인
+3. 사용할 USD를 정하면 greenhouse.usd 또는 strawberry_plant.usd로 연결
+4. Smart Farm Twin 창에서 Create Twin Scene
 ```
 
 ## 후보 탐색 명령

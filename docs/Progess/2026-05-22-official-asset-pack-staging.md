@@ -10,8 +10,7 @@ Downloads/
 kit-app-template/
 └─ source/extensions/joon.smartfarm.twin/assets/
    ├─ README.md
-   ├─ official/     git 제외, 원본 asset pack
-   └─ local/        git 제외, 현재 POC 선택 자산
+   └─ official/     git 제외, 원본 asset pack
 ```
 
 ## 반입 결과
@@ -20,14 +19,12 @@ kit-app-template/
 |---|---:|---:|
 | `assets/official/aec_demo/` | AEC Brownstone 데모, 사이트/식생/조명 후보 | 2.4G |
 | `assets/official/tower_demo/` | Tower 데모, 실내 식물/화분/사이트/조명 후보 | 9.7G |
-| `assets/local/` | 우리 POC에서 실제 참조할 선택 자산 | 작음 |
-
 ## Git 관리
 
 ```text
 .gitignore
 ├─ assets/official/  무시
-├─ assets/local/     무시
+├─ assets/greenhouse.usd / strawberry_plant.usd  무시
 └─ assets/**/*.zip   무시
 ```
 
@@ -38,19 +35,16 @@ kit-app-template/
 ## 현재 연결
 
 ```text
-assets/local/strawberry_plant.usd
-  └─ ../official/tower_demo/Demos/AEC/TowerDemo/TowerDemopack/
-     Assets/ArchVis/Residential/Plants/Plant_Succulent_01.usd
+자동 연결 없음
 ```
 
 의미:
 
 ```text
 Create Twin Scene
-  -> extension.py
-  -> assets/local/strawberry_plant.usd 탐색
-  -> official asset pack 안의 식물 USD 참조
-  -> /World/SmartFarm/Plants 아래 배치
+  -> assets/greenhouse.usd 탐색
+  -> assets/strawberry_plant.usd 탐색
+  -> 없으면 primitive POC 모델 생성
 ```
 
 주의:
@@ -58,7 +52,7 @@ Create Twin Scene
 | 항목 | 판단 |
 |---|---|
 | 딸기 전용 모델 | 아님 |
-| 외부 asset 참조 테스트 | 가능 |
+| 외부 asset 참조 테스트 | 후보 선정 후 가능 |
 | 실제 스마트팜 realism | 후보 교체 필요 |
 | 온실 전용 모델 | 아직 없음 |
 
@@ -67,9 +61,9 @@ Create Twin Scene
 ```text
 1. 앱 실행
 2. Smart Farm Twin 창 열림 확인
-3. Create Twin Scene 클릭
-4. Stage에서 /World/SmartFarm/Plants 확인
-5. 기존 primitive 잎 대신 외부 USD 식물 참조 확인
+3. Content Browser 또는 File > Open
+4. assets/official/ 아래 USD 직접 확인
+5. 후보 경로 기록
 ```
 
 ## 후보 파일
@@ -100,25 +94,26 @@ Create Twin Scene
 
 ```mermaid
 flowchart TD
-    A[Create Twin Scene 실행] --> B{외부 식물 크기/형태 확인}
-    B -->|괜찮음| C[POC demo scenario 유지]
-    B -->|너무 큼/작음| D[extension.py scale 조정]
-    B -->|식물이 아님| E[local/strawberry_plant.usd 링크 교체]
-    E --> A
+    A[official 폴더에서 USD 직접 탐색] --> B{쓸만한 후보 발견}
+    B -->|식물 후보| C[assets/strawberry_plant.usd로 연결]
+    B -->|온실 후보| D[assets/greenhouse.usd로 연결]
+    B -->|부적합| E[다른 pack 또는 외부 marketplace 탐색]
+    C --> F[Create Twin Scene 실행]
+    D --> F
 ```
 
-## 링크 교체 방식
+## 후보 확정 후 연결 방식
 
 ```bash
-ln -sfn ../official/<선택한 USD 경로> \
-  source/extensions/joon.smartfarm.twin/assets/local/strawberry_plant.usd
+ln -sfn official/<선택한 pack 내부 경로>.usd \
+  source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usd
 ```
 
 온실은 같은 방식:
 
 ```bash
-ln -sfn ../official/<선택한 온실 USD 경로> \
-  source/extensions/joon.smartfarm.twin/assets/local/greenhouse.usd
+ln -sfn official/<선택한 pack 내부 경로>.usd \
+  source/extensions/joon.smartfarm.twin/assets/greenhouse.usd
 ```
 
 현재 pack 안에는 온실 전용 모델 후보가 약함.

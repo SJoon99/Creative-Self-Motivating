@@ -39,5 +39,10 @@ deps/**/user.toml
 
 # Large local 3D asset packs for Smart Farm Twin.
 /source/extensions/joon.smartfarm.twin/assets/official/
-/source/extensions/joon.smartfarm.twin/assets/local/
+/source/extensions/joon.smartfarm.twin/assets/greenhouse.usd
+/source/extensions/joon.smartfarm.twin/assets/greenhouse.usda
+/source/extensions/joon.smartfarm.twin/assets/greenhouse.usdc
+/source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usd
+/source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usda
+/source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usdc
 /source/extensions/joon.smartfarm.twin/assets/**/*.zip
