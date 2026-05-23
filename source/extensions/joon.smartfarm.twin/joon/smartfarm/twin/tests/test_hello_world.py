@@ -52,7 +52,7 @@ class Test(omni.kit.test.AsyncTestCase):
         await create_button.click()
         self.assertEqual(
             status_label.widget.text,
-            "Twin scene created: 2x2 vinyl greenhouse block, raised strawberry gutters, sensors, LEDs, and fans.",
+            "Twin scene created: 2x2 glass greenhouse block, raised strawberry gutters, sensors, LEDs, and fans.",
         )
 
         stage = omni.usd.get_context().get_stage()
@@ -62,7 +62,7 @@ class Test(omni.kit.test.AsyncTestCase):
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_02_01"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_02_02"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse"))
-        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse/VinylRoofSheet_LeftMid"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse/GlassRoofPanel_LeftMid"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/GrowingBeds/WhiteRaisedGutter_01"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/GrowingBeds/SoilTop_01"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Plants/Bed_01_Plant_01/ExternalModel"))

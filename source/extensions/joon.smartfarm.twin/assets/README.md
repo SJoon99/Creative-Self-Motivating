@@ -7,41 +7,19 @@
 ```text
 assets/
 ├─ official/               공식 asset pack 압축 해제 위치, git 제외
-├─ candidates/             외부 후보 모델 비교 위치, 모델 파일 git 제외
 ├─ greenhouse.usd          또는 greenhouse.usda / greenhouse.usdc
 └─ strawberry_plant.usd    또는 strawberry_plant.usda / strawberry_plant.usdc
 ```
 
-`Create Twin Scene` 실행 시 위 파일명 또는 `candidates/` 후보 USD가 있을 때 외부 USD를 참조한다.
+`Create Twin Scene` 실행 시 위 파일명이 있을 때만 외부 USD를 참조한다.
 위 파일명은 symlink로 쓸 수 있고 git에서 제외한다.
-
-## Greenhouse 후보 비교
-
-```text
-candidates/
-├─ greenhouse_low_poly_generic/
-│  └─ greenhouse.usd
-│
-└─ greenhouse_hoop_house_20x60/
-   └─ greenhouse.usd
-```
-
-Smart Farm Twin UI:
-
-```text
-Auto Asset   greenhouse.usd -> generic -> hoop 순서
-Generic      greenhouse_low_poly_generic만 사용
-Hoop         greenhouse_hoop_house_20x60만 사용
-```
-
-선택 후 `Create Twin Scene`을 다시 누른다.
 
 ## 권장 작업 흐름
 
 ```text
 GLB / glTF / FBX / OBJ 다운로드
   -> Omniverse Asset Importer로 USD 변환
-  -> 위 파일명으로 assets/ 또는 assets/candidates/<후보>/에 배치
+  -> 위 파일명으로 assets/에 배치
   -> ./repo.sh build
   -> ./repo.sh launch
   -> Create Twin Scene

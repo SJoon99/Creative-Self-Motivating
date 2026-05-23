@@ -34,29 +34,6 @@ GREENHOUSE_UNITS = (
     ("House_02_01", -GREENHOUSE_LENGTH / 2.0, GREENHOUSE_WIDTH / 2.0),
     ("House_02_02", GREENHOUSE_LENGTH / 2.0, GREENHOUSE_WIDTH / 2.0),
 )
-GREENHOUSE_ASSET_CANDIDATES = {
-    "auto": (
-        ("greenhouse.usd", "greenhouse.usd"),
-        ("greenhouse.usda", "greenhouse.usda"),
-        ("greenhouse.usdc", "greenhouse.usdc"),
-        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usd"),
-        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usda"),
-        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usdc"),
-        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usd"),
-        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usda"),
-        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usdc"),
-    ),
-    "generic": (
-        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usd"),
-        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usda"),
-        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usdc"),
-    ),
-    "hoop": (
-        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usd"),
-        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usda"),
-        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usdc"),
-    ),
-}
 PLANT_ASSET_CANDIDATES = (
     "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Vegetation/Shrub/Daphne.usd",
     "http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Vegetation/Shrub/Daphne.usd",
@@ -86,8 +63,7 @@ class MyExtension(omni.ext.IExt):
 
         self._metric_labels = {}
         self._selected_plant_asset = None
-        self._greenhouse_asset_preference = "auto"
-        self._window = ui.Window("Smart Farm Twin", width=500, height=620)
+        self._window = ui.Window("Smart Farm Twin", width=480, height=560)
         with self._window.frame:
             with ui.VStack(spacing=8, height=0):
                 ui.Label("Strawberry Early-Shipment Twin", height=24)
@@ -103,17 +79,11 @@ class MyExtension(omni.ext.IExt):
                 self._metric_labels["yield_score"] = self._add_info_row("Yield Score", "-")
                 self._metric_labels["opex"] = self._add_info_row("OpEx Delta", "-")
                 self._metric_labels["recommendation"] = self._add_info_row("Recommendation", "-")
-                self._metric_labels["greenhouse_asset"] = self._add_info_row("Greenhouse Asset", "Procedural fallback")
                 self._metric_labels["plant_asset"] = self._add_info_row("Plant Asset", "Procedural fallback")
 
                 ui.Spacer(height=8)
                 self._status_label = ui.Label(DEFAULT_STATUS, word_wrap=True)
                 ui.Spacer(height=8)
-
-                with ui.HStack(spacing=8, height=28):
-                    ui.Button("Auto Asset", clicked_fn=lambda: self._set_greenhouse_asset_preference("auto"))
-                    ui.Button("Generic", clicked_fn=lambda: self._set_greenhouse_asset_preference("generic"))
-                    ui.Button("Hoop", clicked_fn=lambda: self._set_greenhouse_asset_preference("hoop"))
 
                 with ui.HStack(spacing=8, height=32):
                     ui.Button(
@@ -134,15 +104,6 @@ class MyExtension(omni.ext.IExt):
     def _set_status(self, text: str):
         self._status_label.text = text
 
-    def _set_greenhouse_asset_preference(self, preference: str):
-        self._greenhouse_asset_preference = preference
-        label = {
-            "auto": "Auto greenhouse asset selection enabled.",
-            "generic": "Generic greenhouse candidate selected. Click Create Twin Scene after conversion.",
-            "hoop": "Hoop house 20x60 candidate selected. Click Create Twin Scene after conversion.",
-        }[preference]
-        self._set_status(label)
-
     def _on_create_twin_scene(self):
         stage = self._get_stage()
         if stage is None:
@@ -151,7 +112,7 @@ class MyExtension(omni.ext.IExt):
 
         self._build_smart_farm_scene(stage)
         self._set_status(
-            "Twin scene created: 2x2 vinyl greenhouse block, raised strawberry gutters, sensors, LEDs, and fans."
+            "Twin scene created: 2x2 glass greenhouse block, raised strawberry gutters, sensors, LEDs, and fans."
         )
 
     def _on_run_demo_scenario(self):
@@ -189,10 +150,9 @@ class MyExtension(omni.ext.IExt):
         stage.SetDefaultPrim(world.GetPrim())
         UsdGeom.Xform.Define(stage, SMART_FARM_PATH)
 
-        greenhouse_asset_label, greenhouse_asset = self._find_greenhouse_asset()
+        greenhouse_asset = self._find_named_asset("greenhouse")
         strawberry_asset = self._find_plant_asset()
         self._selected_plant_asset = strawberry_asset
-        self._metric_labels["greenhouse_asset"].text = greenhouse_asset_label
         self._metric_labels["plant_asset"].text = self._asset_label(strawberry_asset)
 
         self._create_site_floor(stage)
@@ -270,11 +230,11 @@ class MyExtension(omni.ext.IExt):
         frame_color = (0.58, 0.64, 0.67)
         half_length = GREENHOUSE_LENGTH / 2.0
         half_width = GREENHOUSE_WIDTH / 2.0
-        cover_color = (0.70, 0.91, 0.98)
-        seam_color = (0.42, 0.72, 0.88)
+        glass_color = (0.78, 0.93, 0.98)
+        edge_color = (0.34, 0.56, 0.62)
 
-        self._create_vinyl_cover_panels(stage, group, cover_color, half_length, half_width)
-        self._create_vinyl_film_strips(stage, group, seam_color, half_width)
+        self._create_glass_cover_panels(stage, group, glass_color, half_length, half_width)
+        self._create_glass_panel_edges(stage, group, edge_color, half_width)
 
         for x in (-28, -22, -16, -10, -4, 2, 8, 14, 20, 26):
             safe_x = self._safe_name(x)
@@ -290,26 +250,26 @@ class MyExtension(omni.ext.IExt):
 
         for x in (-half_length, half_length):
             safe_x = self._safe_name(x)
-            self._create_cube(stage, f"{group}/VinylEndOutline_{safe_x}_Left", (x, 2.2, -half_width), (0.09, 4.4, 0.09), seam_color, 0.70)
-            self._create_cube(stage, f"{group}/VinylEndOutline_{safe_x}_Right", (x, 2.2, half_width), (0.09, 4.4, 0.09), seam_color, 0.70)
-            self._create_cube(stage, f"{group}/VinylEndOutline_{safe_x}_Base", (x, 0.16, 0), (0.09, 0.09, GREENHOUSE_WIDTH), seam_color, 0.58)
-            self._create_cube(stage, f"{group}/VinylEndOutline_{safe_x}_Ridge", (x, GREENHOUSE_RIDGE_HEIGHT, 0), (0.09, 0.09, 2.4), seam_color, 0.62)
+            self._create_cube(stage, f"{group}/GlassEndFrame_{safe_x}_Left", (x, 2.2, -half_width), (0.10, 4.4, 0.10), edge_color, 0.88)
+            self._create_cube(stage, f"{group}/GlassEndFrame_{safe_x}_Right", (x, 2.2, half_width), (0.10, 4.4, 0.10), edge_color, 0.88)
+            self._create_cube(stage, f"{group}/GlassEndFrame_{safe_x}_Base", (x, 0.16, 0), (0.10, 0.10, GREENHOUSE_WIDTH), edge_color, 0.82)
+            self._create_cube(stage, f"{group}/GlassEndFrame_{safe_x}_Ridge", (x, GREENHOUSE_RIDGE_HEIGHT, 0), (0.10, 0.10, 2.4), edge_color, 0.86)
 
         for z in (-7.8, -5.6, -3.4, -1.2, 1.2, 3.4, 5.6, 7.8):
             self._create_cube(
                 stage,
-                f"{group}/VinylSeam_{self._safe_name(z)}",
+                f"{group}/GlassRoofMullion_{self._safe_name(z)}",
                 (0, 4.7, z),
-                (GREENHOUSE_LENGTH, 0.12, 0.15),
-                seam_color,
-                0.68,
+                (GREENHOUSE_LENGTH, 0.13, 0.17),
+                edge_color,
+                0.82,
             )
 
-    def _create_vinyl_cover_panels(self, stage, group, color, half_length, half_width):
-        self._create_cube(stage, f"{group}/LeftWallVinylSheet", (0, 2.1, -half_width), (GREENHOUSE_LENGTH, 4.2, 0.045), color, 0.28)
-        self._create_cube(stage, f"{group}/RightWallVinylSheet", (0, 2.1, half_width), (GREENHOUSE_LENGTH, 4.2, 0.045), color, 0.28)
-        self._create_cube(stage, f"{group}/FrontVinylSheet", (-half_length, 2.2, 0), (0.045, 4.4, GREENHOUSE_WIDTH), color, 0.22)
-        self._create_cube(stage, f"{group}/BackVinylSheet", (half_length, 2.2, 0), (0.045, 4.4, GREENHOUSE_WIDTH), color, 0.22)
+    def _create_glass_cover_panels(self, stage, group, color, half_length, half_width):
+        self._create_cube(stage, f"{group}/LeftWallGlass", (0, 2.1, -half_width), (GREENHOUSE_LENGTH, 4.2, 0.035), color, 0.18, roughness=0.04)
+        self._create_cube(stage, f"{group}/RightWallGlass", (0, 2.1, half_width), (GREENHOUSE_LENGTH, 4.2, 0.035), color, 0.18, roughness=0.04)
+        self._create_cube(stage, f"{group}/FrontGlass", (-half_length, 2.2, 0), (0.035, 4.4, GREENHOUSE_WIDTH), color, 0.16, roughness=0.04)
+        self._create_cube(stage, f"{group}/BackGlass", (half_length, 2.2, 0), (0.035, 4.4, GREENHOUSE_WIDTH), color, 0.16, roughness=0.04)
 
         roof_panels = [
             ("LeftEave", -7.2, 4.7, -28, 3.2),
@@ -322,24 +282,25 @@ class MyExtension(omni.ext.IExt):
         for name, z, y, rot_x, width in roof_panels:
             self._create_cube(
                 stage,
-                f"{group}/VinylRoofSheet_{name}",
+                f"{group}/GlassRoofPanel_{name}",
                 (0, y, z),
-                (GREENHOUSE_LENGTH, 0.055, width),
+                (GREENHOUSE_LENGTH, 0.040, width),
                 color,
-                0.26,
+                0.17,
                 rotation=(rot_x, 0, 0),
+                roughness=0.04,
             )
 
-    def _create_vinyl_film_strips(self, stage, group, color, half_width):
+    def _create_glass_panel_edges(self, stage, group, color, half_width):
         for side_name, z in (("Left", -half_width), ("Right", half_width)):
             for index, y in enumerate((1.0, 2.25, 3.5), start=1):
                 self._create_cube(
                     stage,
-                    f"{group}/VinylSideFilm_{side_name}_{index}",
+                    f"{group}/GlassSideMullion_{side_name}_{index}",
                     (0, y, z),
-                    (GREENHOUSE_LENGTH, 0.18, 0.075),
+                    (GREENHOUSE_LENGTH, 0.16, 0.085),
                     color,
-                    0.66,
+                    0.82,
                 )
 
         roof_bands = [
@@ -354,11 +315,11 @@ class MyExtension(omni.ext.IExt):
         for name, z, y, rot_x in roof_bands:
             self._create_cube(
                 stage,
-                f"{group}/VinylRoofFilm_{name}",
+                f"{group}/GlassRoofEdge_{name}",
                 (0, y, z),
-                (GREENHOUSE_LENGTH, 0.13, 0.72),
+                (GREENHOUSE_LENGTH, 0.14, 0.52),
                 color,
-                0.62,
+                0.78,
                 rotation=(rot_x, 0, 0),
             )
 
@@ -623,13 +584,13 @@ class MyExtension(omni.ext.IExt):
     def _unit_paths(self):
         return [f"{SMART_FARM_PATH}/{unit_name}" for unit_name, _x, _z in GREENHOUSE_UNITS]
 
-    def _create_cube(self, stage, path, translation, scale, color, opacity=1.0, rotation=None):
+    def _create_cube(self, stage, path, translation, scale, color, opacity=1.0, rotation=None, roughness=0.22):
         cube = UsdGeom.Cube.Define(stage, path)
         cube.CreateSizeAttr(1.0)
         cube.CreateDisplayColorAttr([Gf.Vec3f(*color)])
         cube.CreateDisplayOpacityAttr([opacity])
         if opacity < 1.0:
-            self._bind_preview_material(stage, cube.GetPrim(), color, opacity)
+            self._bind_preview_material(stage, cube.GetPrim(), color, opacity, roughness)
         self._set_transform(cube.GetPrim(), translation=translation, rotation=rotation, scale=scale)
         return cube
 
@@ -660,12 +621,15 @@ class MyExtension(omni.ext.IExt):
         self._set_transform(xform.GetPrim(), translation=translation, rotation=rotation, scale=scale)
         return xform
 
-    def _bind_preview_material(self, stage, prim, color, opacity):
-        material = self._create_preview_material(stage, color, opacity)
+    def _bind_preview_material(self, stage, prim, color, opacity, roughness=0.22):
+        material = self._create_preview_material(stage, color, opacity, roughness)
         UsdShade.MaterialBindingAPI(prim).Bind(material)
 
-    def _create_preview_material(self, stage, color, opacity):
-        material_name = f"Preview_{self._safe_name(opacity)}_{int(color[0] * 255)}_{int(color[1] * 255)}_{int(color[2] * 255)}"
+    def _create_preview_material(self, stage, color, opacity, roughness=0.22):
+        material_name = (
+            f"Preview_{self._safe_name(opacity)}_{self._safe_name(roughness)}_"
+            f"{int(color[0] * 255)}_{int(color[1] * 255)}_{int(color[2] * 255)}"
+        )
         material_path = f"{SMART_FARM_PATH}/Looks/{material_name}"
         UsdGeom.Scope.Define(stage, f"{SMART_FARM_PATH}/Looks")
         material = UsdShade.Material.Define(stage, material_path)
@@ -673,7 +637,7 @@ class MyExtension(omni.ext.IExt):
         shader.CreateIdAttr("UsdPreviewSurface")
         shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
         shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(opacity)
-        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.22)
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
         material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
         return material
 
@@ -706,14 +670,6 @@ class MyExtension(omni.ext.IExt):
             if candidate.exists():
                 return candidate
         return None
-
-    def _find_greenhouse_asset(self):
-        candidates = GREENHOUSE_ASSET_CANDIDATES[self._greenhouse_asset_preference]
-        for label, relative_path in candidates:
-            candidate = ASSET_DIR / relative_path
-            if candidate.exists():
-                return label, candidate
-        return "Procedural fallback", None
 
     def _find_plant_asset(self):
         for relative_path in PLANT_ASSET_CANDIDATES:
