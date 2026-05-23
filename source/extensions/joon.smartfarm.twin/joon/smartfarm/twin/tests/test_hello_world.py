@@ -52,7 +52,7 @@ class Test(omni.kit.test.AsyncTestCase):
         await create_button.click()
         self.assertEqual(
             status_label.widget.text,
-            "Twin scene created: 2x2 glass greenhouse block, raised strawberry gutters, sensors, LEDs, and fans.",
+            "Twin scene created: baseline risk state loaded for Gemma 4.0 scenario optimization.",
         )
 
         stage = omni.usd.get_context().get_stage()
@@ -63,16 +63,27 @@ class Test(omni.kit.test.AsyncTestCase):
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_02_02"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse/GlassRoofPanel_LeftMid"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse/GlassRidgeCap"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Greenhouse/LeftEaveArchGlass_Middle"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/GrowingBeds/WhiteRaisedGutter_01"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/GrowingBeds/SoilTop_01"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/GrowingBeds/IrrigationFlow_01"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Plants/Bed_01_Plant_01/ExternalModel"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Plants/Bed_01_Plant_01/HangingRunner"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Actuators/LEDStripLight_1"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Actuators/CeilingFan_1"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Actuators/CeilingFan_3"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Actuators/CeilingFanAirflow_1_1"))
+        self.assertFalse(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/AisleSoilPatch_neg24"))
+        self.assertFalse(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/FallenStrawberries_neg24"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Sensors/CO2Sensor"))
+        self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/Lighting/InteriorFill/House_01_01_01"))
+        self.assertFalse(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Plants/Bed_01_Plant_01/Fruit"))
 
         await scenario_button.click()
         self.assertEqual(
             status_label.widget.text,
-            "Recommended scenario applied: 16h photoperiod + CO2. Shipment target is met with yield score 87.",
+            "Gemma 4.0 blueprint applied: LED, irrigation, and fan controls recover the shipment target.",
         )
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_01_01/Plants/Bed_01_Plant_01/Fruit"))
         self.assertTrue(stage.GetPrimAtPath("/World/SmartFarm/House_02_02/Plants/Bed_01_Plant_01/Fruit"))

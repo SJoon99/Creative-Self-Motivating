@@ -28,6 +28,7 @@ BED_LENGTH = 46.0
 BED_Z_POSITIONS = (-6.2, -3.8, 3.8, 6.2)
 PLANT_X_POSITIONS = (-21, -17, -13, -9, -5, -1, 3, 7, 11, 15, 19, 23)
 GUTTER_HEIGHT = 1.55
+LED_Z_POSITIONS = (-5.5, -3.1, 3.1, 5.5)
 GREENHOUSE_UNITS = (
     ("House_01_01", -GREENHOUSE_LENGTH / 2.0, -GREENHOUSE_WIDTH / 2.0),
     ("House_01_02", GREENHOUSE_LENGTH / 2.0, -GREENHOUSE_WIDTH / 2.0),
@@ -63,7 +64,7 @@ class MyExtension(omni.ext.IExt):
 
         self._metric_labels = {}
         self._selected_plant_asset = None
-        self._window = ui.Window("Smart Farm Twin", width=480, height=560)
+        self._window = ui.Window("Smart Farm Twin", width=500, height=640)
         with self._window.frame:
             with ui.VStack(spacing=8, height=0):
                 ui.Label("Strawberry Early-Shipment Twin", height=24)
@@ -75,6 +76,9 @@ class MyExtension(omni.ext.IExt):
                 self._metric_labels["stage"] = self._add_info_row("Stage", "Vegetative growth")
                 self._add_info_row("Target Shipment", "2026-12-22")
                 self._metric_labels["scenario"] = self._add_info_row("Scenario", "Not run")
+                self._metric_labels["light"] = self._add_info_row("Light", "-")
+                self._metric_labels["moisture"] = self._add_info_row("Moisture", "-")
+                self._metric_labels["fan"] = self._add_info_row("Fan", "-")
                 self._metric_labels["expected_shipment"] = self._add_info_row("Expected Shipment", "-")
                 self._metric_labels["yield_score"] = self._add_info_row("Yield Score", "-")
                 self._metric_labels["opex"] = self._add_info_row("OpEx Delta", "-")
@@ -111,8 +115,9 @@ class MyExtension(omni.ext.IExt):
             return
 
         self._build_smart_farm_scene(stage)
+        self._update_baseline_metrics()
         self._set_status(
-            "Twin scene created: 2x2 glass greenhouse block, raised strawberry gutters, sensors, LEDs, and fans."
+            "Twin scene created: baseline risk state loaded for Gemma 4.0 scenario optimization."
         )
 
     def _on_run_demo_scenario(self):
@@ -127,7 +132,7 @@ class MyExtension(omni.ext.IExt):
         self._apply_demo_scenario(stage)
         self._update_demo_metrics()
         self._set_status(
-            "Recommended scenario applied: 16h photoperiod + CO2. Shipment target is met with yield score 87."
+            "Gemma 4.0 blueprint applied: LED, irrigation, and fan controls recover the shipment target."
         )
 
     def _get_stage(self):
@@ -158,6 +163,7 @@ class MyExtension(omni.ext.IExt):
         self._create_site_floor(stage)
         self._create_greenhouse_units(stage, greenhouse_asset, strawberry_asset)
         self._create_lighting(stage)
+        self._update_baseline_metrics()
 
     def _create_site_floor(self, stage):
         self._create_cube(
@@ -165,7 +171,7 @@ class MyExtension(omni.ext.IExt):
             f"{SMART_FARM_PATH}/Ground",
             translation=(0, -0.04, 0),
             scale=(GREENHOUSE_LENGTH * 2.0 + 10.0, 0.08, GREENHOUSE_WIDTH * 2.0 + 10.0),
-            color=(0.34, 0.26, 0.18),
+            color=(0.48, 0.40, 0.30),
         )
 
     def _create_greenhouse_units(self, stage, greenhouse_asset, strawberry_asset):
@@ -196,7 +202,7 @@ class MyExtension(omni.ext.IExt):
             f"{unit_path}/CentralWalkway",
             translation=(0, 0.02, 0),
             scale=(54, 0.035, 2.35),
-            color=(0.42, 0.39, 0.33),
+            color=(0.55, 0.53, 0.47),
         )
         for z in (-8.1, 8.1):
             self._create_cube(
@@ -205,22 +211,6 @@ class MyExtension(omni.ext.IExt):
                 translation=(0, 0.04, z),
                 scale=(52, 0.035, 1.05),
                 color=(0.18, 0.43, 0.54),
-            )
-        for x in (-24, -16, -8, 0, 8, 16, 24):
-            self._create_cube(
-                stage,
-                f"{unit_path}/AisleSoilPatch_{self._safe_name(x)}",
-                translation=(x, 0.06, 0.0),
-                scale=(1.2, 0.025, 0.8),
-                color=(0.17, 0.10, 0.055),
-                opacity=0.8,
-            )
-            self._create_sphere(
-                stage,
-                f"{unit_path}/FallenStrawberries_{self._safe_name(x)}",
-                translation=(x + 0.38, 0.13, 0.28),
-                scale=(0.10, 0.08, 0.10),
-                color=(0.90, 0.04, 0.03),
             )
 
     def _create_greenhouse(self, stage, unit_path):
@@ -266,16 +256,19 @@ class MyExtension(omni.ext.IExt):
             )
 
     def _create_glass_cover_panels(self, stage, group, color, half_length, half_width):
-        self._create_cube(stage, f"{group}/LeftWallGlass", (0, 2.1, -half_width), (GREENHOUSE_LENGTH, 4.2, 0.035), color, 0.18, roughness=0.04)
-        self._create_cube(stage, f"{group}/RightWallGlass", (0, 2.1, half_width), (GREENHOUSE_LENGTH, 4.2, 0.035), color, 0.18, roughness=0.04)
-        self._create_cube(stage, f"{group}/FrontGlass", (-half_length, 2.2, 0), (0.035, 4.4, GREENHOUSE_WIDTH), color, 0.16, roughness=0.04)
-        self._create_cube(stage, f"{group}/BackGlass", (half_length, 2.2, 0), (0.035, 4.4, GREENHOUSE_WIDTH), color, 0.16, roughness=0.04)
+        self._create_cube(stage, f"{group}/LeftWallGlass", (0, 2.1, -half_width), (GREENHOUSE_LENGTH, 4.2, 0.035), color, 0.10, roughness=0.03)
+        self._create_cube(stage, f"{group}/RightWallGlass", (0, 2.1, half_width), (GREENHOUSE_LENGTH, 4.2, 0.035), color, 0.10, roughness=0.03)
+        self._create_cube(stage, f"{group}/FrontGlass", (-half_length, 2.2, 0), (0.035, 4.4, GREENHOUSE_WIDTH), color, 0.08, roughness=0.03)
+        self._create_cube(stage, f"{group}/BackGlass", (half_length, 2.2, 0), (0.035, 4.4, GREENHOUSE_WIDTH), color, 0.08, roughness=0.03)
+        self._create_cube(stage, f"{group}/FrontUpperClosureGlass", (-half_length, 4.82, 0), (0.035, 0.88, GREENHOUSE_WIDTH), color, 0.07, roughness=0.03)
+        self._create_cube(stage, f"{group}/BackUpperClosureGlass", (half_length, 4.82, 0), (0.035, 0.88, GREENHOUSE_WIDTH), color, 0.07, roughness=0.03)
+        self._create_eave_arch_glass(stage, group, color)
 
         roof_panels = [
             ("LeftEave", -7.2, 4.7, -28, 3.2),
             ("LeftMid", -4.25, 6.15, -20, 3.1),
-            ("LeftHigh", -1.65, 7.55, -10, 2.6),
-            ("RightHigh", 1.65, 7.55, 10, 2.6),
+            ("LeftHigh", -1.95, 7.55, -10, 3.3),
+            ("RightHigh", 1.95, 7.55, 10, 3.3),
             ("RightMid", 4.25, 6.15, 20, 3.1),
             ("RightEave", 7.2, 4.7, 28, 3.2),
         ]
@@ -286,14 +279,71 @@ class MyExtension(omni.ext.IExt):
                 (0, y, z),
                 (GREENHOUSE_LENGTH, 0.040, width),
                 color,
-                0.17,
+                0.001,
                 rotation=(rot_x, 0, 0),
-                roughness=0.04,
+                roughness=0.03,
+            )
+        self._create_cube(
+            stage,
+            f"{group}/GlassRidgeCap",
+            (0, GREENHOUSE_RIDGE_HEIGHT - 0.08, 0),
+            (GREENHOUSE_LENGTH, 0.035, 3.4),
+            color,
+            0.001,
+            roughness=0.03,
+        )
+        self._create_cube(
+            stage,
+            f"{group}/GlassRidgeInfillLeft",
+            (0, 8.03, -0.95),
+            (GREENHOUSE_LENGTH, 0.035, 1.8),
+            color,
+            0.001,
+            rotation=(-5, 0, 0),
+            roughness=0.03,
+        )
+        self._create_cube(
+            stage,
+            f"{group}/GlassRidgeInfillRight",
+            (0, 8.03, 0.95),
+            (GREENHOUSE_LENGTH, 0.035, 1.8),
+            color,
+            0.001,
+            rotation=(5, 0, 0),
+            roughness=0.03,
+        )
+
+    def _create_eave_arch_glass(self, stage, group, color):
+        arch_segments = (
+            ("Lower", 4.42, 8.92, 8, 0.78),
+            ("Middle", 4.72, 8.36, 18, 0.90),
+            ("Upper", 5.02, 7.76, 28, 0.92),
+        )
+        for name, y, abs_z, abs_rot_x, width in arch_segments:
+            self._create_cube(
+                stage,
+                f"{group}/LeftEaveArchGlass_{name}",
+                (0, y, -abs_z),
+                (GREENHOUSE_LENGTH, 0.035, width),
+                color,
+                0.001,
+                rotation=(-abs_rot_x, 0, 0),
+                roughness=0.03,
+            )
+            self._create_cube(
+                stage,
+                f"{group}/RightEaveArchGlass_{name}",
+                (0, y, abs_z),
+                (GREENHOUSE_LENGTH, 0.035, width),
+                color,
+                0.001,
+                rotation=(abs_rot_x, 0, 0),
+                roughness=0.03,
             )
 
     def _create_glass_panel_edges(self, stage, group, color, half_width):
         for side_name, z in (("Left", -half_width), ("Right", half_width)):
-            for index, y in enumerate((1.0, 2.25, 3.5), start=1):
+            for index, y in enumerate((1.0, 2.25, 3.5, 4.95), start=1):
                 self._create_cube(
                     stage,
                     f"{group}/GlassSideMullion_{side_name}_{index}",
@@ -351,6 +401,15 @@ class MyExtension(omni.ext.IExt):
                 scale=(BED_LENGTH, 0.04, 0.04),
                 color=(0.05, 0.08, 0.10),
             )
+            self._create_cube(
+                stage,
+                f"{beds_group}/IrrigationFlow_{bed_index:02d}",
+                translation=(0, GUTTER_HEIGHT + 0.42, z),
+                scale=(BED_LENGTH - 1.0, 0.025, 0.13),
+                color=(0.12, 0.62, 1.00),
+                opacity=0.04,
+                roughness=0.08,
+            )
             for support_index, x in enumerate((-22, -14, -6, 2, 10, 18, 26), start=1):
                 self._create_gutter_support(stage, beds_group, bed_index, support_index, x, z)
             for marker_index, x in enumerate((-18.0, -9.0, 0.0, 9.0, 18.0), start=1):
@@ -370,12 +429,42 @@ class MyExtension(omni.ext.IExt):
         group = f"{unit_path}/Actuators"
         UsdGeom.Xform.Define(stage, group)
 
-        for i, z in enumerate((-5.5, -3.1, 3.1, 5.5), start=1):
+        for i, z in enumerate(LED_Z_POSITIONS, start=1):
             self._create_cube(stage, f"{group}/LEDStrip_{i}", (0, 4.25, z), (BED_LENGTH, 0.06, 0.10), (1.0, 0.86, 0.32))
+            self._create_led_rect_light(
+                stage,
+                f"{group}/LEDStripLight_{i}",
+                translation=(0, 4.12, z),
+                width=BED_LENGTH - 1.0,
+                height=0.18,
+                intensity=420.0,
+                color=(1.0, 0.86, 0.42),
+            )
 
-        for i, x in enumerate((-27.6, 27.6), start=1):
-            self._create_cylinder(stage, f"{group}/VentFan_{i}", (x, 3.0, 0), radius=1.0, depth=0.20, color=(0.10, 0.13, 0.16))
-            self._create_cube(stage, f"{group}/VentFanHub_{i}", (x, 3.0, 0), (0.36, 0.36, 0.36), (0.35, 0.40, 0.44))
+        for i, x in enumerate((-18.0, 0.0, 18.0), start=1):
+            self._create_cylinder(stage, f"{group}/CeilingFan_{i}", (x, 6.55, 0), radius=0.78, depth=0.16, color=(0.12, 0.14, 0.15))
+            self._create_cube(stage, f"{group}/CeilingFanHub_{i}", (x, 6.55, 0), (0.30, 0.18, 0.30), (0.34, 0.38, 0.40))
+            self._create_cylinder(stage, f"{group}/CeilingFanDropRod_{i}", (x, 7.08, 0), radius=0.035, depth=1.05, color=(0.42, 0.46, 0.48))
+            for blade_index, rotation in enumerate((0, 60, 120), start=1):
+                self._create_cube(
+                    stage,
+                    f"{group}/CeilingFanBlade_{i}_{blade_index}",
+                    (x, 6.55, 0),
+                    (1.72, 0.035, 0.16),
+                    (0.58, 0.62, 0.64),
+                    rotation=(0, rotation, 0),
+                )
+            for flow_index, y in enumerate((5.95, 5.35, 4.75), start=1):
+                self._create_cube(
+                    stage,
+                    f"{group}/CeilingFanAirflow_{i}_{flow_index}",
+                    (x, y, 0),
+                    (2.35, 0.035, 0.18),
+                    (0.58, 0.92, 1.0),
+                    opacity=0.04,
+                    rotation=(0, 0, 0),
+                    roughness=0.05,
+                )
 
         self._create_cube(stage, f"{group}/CO2Injector", (-25.8, 1.0, -7.2), (0.55, 1.1, 0.55), (0.20, 0.20, 0.24))
         self._create_cube(stage, f"{group}/WaterValve", (25.2, 0.75, 7.2), (0.60, 0.45, 0.45), (0.05, 0.28, 0.70))
@@ -398,12 +487,22 @@ class MyExtension(omni.ext.IExt):
         UsdGeom.Xform.Define(stage, group)
 
         dome = UsdLux.DomeLight.Define(stage, f"{group}/SoftSky")
-        dome.CreateIntensityAttr(250.0)
+        dome.CreateIntensityAttr(650.0)
 
         sun = UsdLux.DistantLight.Define(stage, f"{group}/Sun")
-        sun.CreateIntensityAttr(1800.0)
-        sun.CreateAngleAttr(0.8)
+        sun.CreateIntensityAttr(3200.0)
+        sun.CreateAngleAttr(1.2)
         self._set_transform(sun.GetPrim(), rotation=(-45, 35, 0))
+
+        fill_group = f"{group}/InteriorFill"
+        UsdGeom.Xform.Define(stage, fill_group)
+        for unit_name, x_offset, z_offset in GREENHOUSE_UNITS:
+            for index, x in enumerate((-18.0, 0.0, 18.0), start=1):
+                light = UsdLux.SphereLight.Define(stage, f"{fill_group}/{unit_name}_{index:02d}")
+                light.CreateIntensityAttr(850.0)
+                light.CreateRadiusAttr(0.12)
+                light.CreateColorAttr(Gf.Vec3f(1.0, 0.96, 0.88))
+                self._set_transform(light.GetPrim(), translation=(x_offset + x, 5.4, z_offset))
 
     def _create_plant(self, stage, group, bed_index, plant_index, x, z, strawberry_asset=None):
         base = f"{group}/Bed_{bed_index:02d}_Plant_{plant_index:02d}"
@@ -429,11 +528,15 @@ class MyExtension(omni.ext.IExt):
                 depth=0.78,
                 color=(0.10, 0.34, 0.08),
             )
-            if plant_index in (2, 5, 8, 11):
-                self._create_strawberry_fruit(stage, f"{base}/Fruit", (x - 0.16, GUTTER_HEIGHT - 0.30, fruit_z), ripe=True)
-                self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.18, GUTTER_HEIGHT - 0.12, fruit_z + hang_direction * 0.16), ripe=False)
-            elif plant_index in (3, 7, 10):
-                self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.12, GUTTER_HEIGHT - 0.16, fruit_z), ripe=False)
+            self._create_sphere(
+                stage,
+                f"{base}/Flower",
+                (x + 0.18, GUTTER_HEIGHT - 0.02, fruit_z),
+                scale=(0.055, 0.055, 0.055),
+                color=(0.95, 0.95, 0.90),
+            )
+            if plant_index in (4, 9):
+                self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.12, GUTTER_HEIGHT - 0.14, fruit_z), ripe=False)
             return
 
         self._create_cylinder(
@@ -472,10 +575,7 @@ class MyExtension(omni.ext.IExt):
             color=(0.95, 0.95, 0.90),
         )
 
-        if plant_index in (2, 5, 8, 11):
-            self._create_strawberry_fruit(stage, f"{base}/Fruit", (x - 0.16, GUTTER_HEIGHT - 0.32, fruit_z), ripe=True)
-            self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.18, GUTTER_HEIGHT - 0.14, fruit_z + hang_direction * 0.16), ripe=False)
-        elif plant_index in (3, 7, 10):
+        if plant_index in (4, 9):
             self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.12, GUTTER_HEIGHT - 0.18, fruit_z), ripe=False)
 
     def _create_leaf(self, stage, path, translation, rotation):
@@ -511,30 +611,80 @@ class MyExtension(omni.ext.IExt):
     def _apply_demo_scenario(self, stage):
         for unit_path in self._unit_paths():
             self._highlight_leds(stage, unit_path)
-            self._highlight_device(stage, f"{unit_path}/Actuators/CO2Injector", (0.10, 0.60, 1.00), scale=(0.48, 1.05, 0.48))
-            self._highlight_device(stage, f"{unit_path}/Sensors/CO2Sensor", (0.10, 0.60, 1.00), scale=(0.48, 0.48, 0.48))
+            self._activate_irrigation(stage, unit_path)
+            self._activate_fans(stage, unit_path)
             self._update_plants_for_harvest(stage, unit_path)
+
+    def _update_baseline_metrics(self):
+        metrics = {
+            "stage": "Flowering / delayed fruit set",
+            "scenario": "Baseline risk state",
+            "light": "LED 40% / 12h",
+            "moisture": "31% substrate",
+            "fan": "0% idle",
+            "expected_shipment": "2026-12-29",
+            "yield_score": "72 / 100",
+            "opex": "Baseline",
+            "recommendation": "Run Gemma 4.0 blueprint",
+        }
+        for key, value in metrics.items():
+            self._metric_labels[key].text = value
 
     def _update_demo_metrics(self):
         metrics = {
-            "stage": "Fruiting -> Early harvest",
-            "scenario": "16h photoperiod + CO2",
+            "stage": "Fruiting -> early harvest",
+            "scenario": "Gemma 4.0: LED + irrigation + fan",
+            "light": "LED 85% / 16h",
+            "moisture": "48% substrate",
+            "fan": "70% airflow",
             "expected_shipment": "2026-12-22",
             "yield_score": "87 / 100",
-            "opex": "+18% electricity",
-            "recommendation": "Recommended",
+            "opex": "+14% electricity/water",
+            "recommendation": "Keep optimized schedule",
         }
         for key, value in metrics.items():
             self._metric_labels[key].text = value
 
     def _highlight_leds(self, stage, unit_path):
-        led_z_positions = (-5.5, -3.1, 3.1, 5.5)
         for index in range(1, 5):
             prim = stage.GetPrimAtPath(f"{unit_path}/Actuators/LEDStrip_{index}")
-            if not prim:
-                continue
-            self._set_display_color(prim, (1.0, 0.95, 0.25))
-            self._set_transform(prim, translation=(0, 4.25, led_z_positions[index - 1]), scale=(BED_LENGTH, 0.14, 0.20))
+            if prim:
+                self._set_display_color(prim, (1.0, 0.95, 0.25))
+                self._set_transform(prim, translation=(0, 4.25, LED_Z_POSITIONS[index - 1]), scale=(BED_LENGTH, 0.14, 0.20))
+
+            light = stage.GetPrimAtPath(f"{unit_path}/Actuators/LEDStripLight_{index}")
+            if light:
+                UsdLux.RectLight(light).GetIntensityAttr().Set(1350.0)
+                UsdLux.RectLight(light).GetColorAttr().Set(Gf.Vec3f(1.0, 0.92, 0.34))
+
+    def _activate_irrigation(self, stage, unit_path):
+        self._highlight_device(stage, f"{unit_path}/Actuators/WaterValve", (0.05, 0.55, 1.00), scale=(0.72, 0.56, 0.56))
+        self._highlight_device(stage, f"{unit_path}/Sensors/SoilMoistureSensor", (0.12, 0.82, 0.48), scale=(0.46, 0.46, 0.46))
+        for bed_index in range(1, len(BED_Z_POSITIONS) + 1):
+            flow = stage.GetPrimAtPath(f"{unit_path}/GrowingBeds/IrrigationFlow_{bed_index:02d}")
+            if flow:
+                self._set_translucent_visual(stage, flow, (0.08, 0.70, 1.0), 0.68, roughness=0.05)
+            soil = stage.GetPrimAtPath(f"{unit_path}/GrowingBeds/SoilTop_{bed_index:02d}")
+            if soil:
+                self._set_display_color(soil, (0.09, 0.055, 0.035))
+
+    def _activate_fans(self, stage, unit_path):
+        self._highlight_device(stage, f"{unit_path}/Sensors/TemperatureHumiditySensor", (0.12, 0.78, 0.92), scale=(0.46, 0.46, 0.46))
+        for fan_index in range(1, 4):
+            fan = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFan_{fan_index}")
+            hub = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanHub_{fan_index}")
+            if fan:
+                self._set_display_color(fan, (0.12, 0.70, 0.92))
+            if hub:
+                self._set_display_color(hub, (0.72, 0.95, 1.00))
+            for blade_index in range(1, 4):
+                blade = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanBlade_{fan_index}_{blade_index}")
+                if blade:
+                    self._set_display_color(blade, (0.62, 0.88, 0.95))
+            for flow_index in range(1, 4):
+                airflow = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanAirflow_{fan_index}_{flow_index}")
+                if airflow:
+                    self._set_translucent_visual(stage, airflow, (0.55, 0.95, 1.0), 0.62, roughness=0.04)
 
     def _highlight_device(self, stage, path, color, scale):
         prim = stage.GetPrimAtPath(path)
@@ -614,6 +764,15 @@ class MyExtension(omni.ext.IExt):
         self._set_transform(cylinder.GetPrim(), translation=translation)
         return cylinder
 
+    def _create_led_rect_light(self, stage, path, translation, width, height, intensity, color):
+        light = UsdLux.RectLight.Define(stage, path)
+        light.CreateWidthAttr(width)
+        light.CreateHeightAttr(height)
+        light.CreateIntensityAttr(intensity)
+        light.CreateColorAttr(Gf.Vec3f(*color))
+        self._set_transform(light.GetPrim(), translation=translation, rotation=(-90, 0, 0))
+        return light
+
     def _reference_asset(self, stage, path, asset_path, translation, scale, rotation=None, instanceable=False):
         xform = UsdGeom.Xform.Define(stage, path)
         xform.GetPrim().GetReferences().AddReference(str(asset_path))
@@ -654,6 +813,12 @@ class MyExtension(omni.ext.IExt):
     def _set_display_color(self, prim, color):
         imageable = UsdGeom.Gprim(prim)
         imageable.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+
+    def _set_translucent_visual(self, stage, prim, color, opacity, roughness=0.10):
+        imageable = UsdGeom.Gprim(prim)
+        imageable.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+        imageable.CreateDisplayOpacityAttr([opacity])
+        self._bind_preview_material(stage, prim, color, opacity, roughness)
 
     def _get_translate_value(self, prim):
         for op in UsdGeom.Xformable(prim).GetOrderedXformOps():
