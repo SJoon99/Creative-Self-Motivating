@@ -4,7 +4,7 @@
 
 ```text
 두 Sketchfab 후보를 바로 비교할 수 있도록
-Smart Farm Twin UI와 assets/candidates 구조를 추가
+다운로드 + USD 변환 + Smart Farm Twin UI 연결까지 완료
 ```
 
 ## 먼저 보존한 기준점
@@ -62,19 +62,31 @@ source/extensions/joon.smartfarm.twin/assets/candidates/greenhouse_hoop_house_20
 
 ```text
 Sketchfab API direct download
-  -> 401 Unauthorized
-  -> 로그인/토큰 필요
+  -> 인증 토큰 등록 후 성공
+  -> glTF archive 다운로드
+  -> raw/extracted/ 아래 압축 해제
+  -> Kit asset converter로 greenhouse.usd 변환 완료
 ```
 
-그래서 모델 파일은 자동 다운로드하지 못함.
-
-대신 완료한 것:
+완료한 것:
 
 ```text
 assets/candidates/ 폴더 구조 생성
 후보별 README 작성
 Smart Farm Twin UI 후보 선택 버튼 추가
-.gitignore에 후보 모델 파일 제외 추가
+.gitignore에 후보 모델/텍스처/raw/manifest 제외 추가
+greenhouse_low_poly_generic/greenhouse.usd 생성
+greenhouse_hoop_house_20x60/greenhouse.usd 생성
+```
+
+생성된 로컬 파일:
+
+```text
+source/extensions/joon.smartfarm.twin/assets/candidates/greenhouse_low_poly_generic/greenhouse.usd
+  size: 약 860 KB
+
+source/extensions/joon.smartfarm.twin/assets/candidates/greenhouse_hoop_house_20x60/greenhouse.usd
+  size: 약 112 KB
 ```
 
 ## UI 사용
@@ -88,7 +100,7 @@ Smart Farm Twin
 
 ```mermaid
 flowchart TD
-    A[Sketchfab에서 수동 다운로드] --> B[USD Composer Import and Convert]
+    A[Sketchfab API 다운로드 완료] --> B[Kit asset converter 변환 완료]
     B --> C{후보 선택}
     C -->|Generic| D[candidates/greenhouse_low_poly_generic/greenhouse.usd]
     C -->|Hoop| E[candidates/greenhouse_hoop_house_20x60/greenhouse.usd]
@@ -102,12 +114,29 @@ flowchart TD
 ## 다음 실제 작업
 
 ```text
-1. Sketchfab 로그인
-2. 두 모델 다운로드
-3. USD Composer에서 Import and Convert
-4. 변환 결과를 후보 폴더의 greenhouse.usd로 저장/복사
-5. Generic / Hoop 버튼으로 각각 Create Twin Scene 확인
-6. 더 나은 후보를 assets/greenhouse.usd로 승격
+1. USD Composer 실행
+2. Smart Farm Twin 창에서 Generic 클릭
+3. Create Twin Scene 클릭
+4. 4개동에 후보 1이 들어가는지 눈으로 확인
+5. Hoop 클릭
+6. Create Twin Scene 다시 클릭
+7. 4개동에 후보 2가 들어가는지 눈으로 확인
+8. 더 나은 후보를 선택한 뒤 scale / rotation / position 보정
+9. 최종 후보를 assets/greenhouse.usd로 승격
+```
+
+실행 명령:
+
+```text
+./usecomposer.sh
+```
+
+눈으로 확인할 UI 흐름:
+
+```text
+Smart Farm Twin
+  Generic -> Create Twin Scene
+  Hoop    -> Create Twin Scene
 ```
 
 ## 판단 메모
@@ -118,4 +147,8 @@ POC 비교는 후보 2가 더 유력
 
 후보 1은 비교용
   이유: 내부 환경이 있어 화면은 풍부하지만 한국형 비닐하우스와 다를 가능성
+
+현재 주의점
+  변환은 성공했지만 실제 배치 scale / 회전 / 높이는 Composer 화면에서 보고 보정해야 함
+  Sketchfab 후보는 외부 라이선스가 있으므로 원본/변환 파일은 git에 넣지 않음
 ```

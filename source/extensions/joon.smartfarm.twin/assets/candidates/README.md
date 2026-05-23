@@ -1,6 +1,6 @@
 # Greenhouse Candidate Assets
 
-Sketchfab 직접 다운로드는 로그인/토큰이 필요해서 모델 파일은 git에 넣지 않는다.
+Sketchfab 모델 파일과 변환된 USD는 외부 에셋이라 git에 넣지 않는다.
 
 ## 후보
 
@@ -26,10 +26,19 @@ Smart Farm Twin
 
 ## 변환 후 파일명
 
-USD Composer의 `Import and Convert` 결과 중 최종 stage 파일을 아래 이름으로 맞춘다.
+현재 두 후보는 Kit asset converter로 아래 파일명까지 변환 완료되어 있다.
 
 ```text
 greenhouse.usd
 ```
 
 `usda`, `usdc`도 코드에서 탐색하지만, 비교 편의를 위해 `greenhouse.usd`로 맞추는 것을 권장한다.
+
+## 현재 로컬 상태
+
+```text
+greenhouse_low_poly_generic/greenhouse.usd
+greenhouse_hoop_house_20x60/greenhouse.usd
+```
+
+USD Composer에서 `Generic` 또는 `Hoop`을 누른 뒤 `Create Twin Scene`을 다시 누르면 4개동에 같은 후보 모델이 들어간다.
