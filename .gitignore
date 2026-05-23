@@ -46,3 +46,12 @@ deps/**/user.toml
 /source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usda
 /source/extensions/joon.smartfarm.twin/assets/strawberry_plant.usdc
 /source/extensions/joon.smartfarm.twin/assets/**/*.zip
+/source/extensions/joon.smartfarm.twin/assets/**/*.fbx
+/source/extensions/joon.smartfarm.twin/assets/**/*.obj
+/source/extensions/joon.smartfarm.twin/assets/**/*.mtl
+/source/extensions/joon.smartfarm.twin/assets/**/*.gltf
+/source/extensions/joon.smartfarm.twin/assets/**/*.glb
+/source/extensions/joon.smartfarm.twin/assets/**/*.bin
+/source/extensions/joon.smartfarm.twin/assets/candidates/**/*.usd
+/source/extensions/joon.smartfarm.twin/assets/candidates/**/*.usda
+/source/extensions/joon.smartfarm.twin/assets/candidates/**/*.usdc

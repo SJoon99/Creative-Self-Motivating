@@ -34,6 +34,29 @@ GREENHOUSE_UNITS = (
     ("House_02_01", -GREENHOUSE_LENGTH / 2.0, GREENHOUSE_WIDTH / 2.0),
     ("House_02_02", GREENHOUSE_LENGTH / 2.0, GREENHOUSE_WIDTH / 2.0),
 )
+GREENHOUSE_ASSET_CANDIDATES = {
+    "auto": (
+        ("greenhouse.usd", "greenhouse.usd"),
+        ("greenhouse.usda", "greenhouse.usda"),
+        ("greenhouse.usdc", "greenhouse.usdc"),
+        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usd"),
+        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usda"),
+        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usdc"),
+        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usd"),
+        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usda"),
+        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usdc"),
+    ),
+    "generic": (
+        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usd"),
+        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usda"),
+        ("Generic greenhouse", "candidates/greenhouse_low_poly_generic/greenhouse.usdc"),
+    ),
+    "hoop": (
+        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usd"),
+        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usda"),
+        ("Hoop house 20x60", "candidates/greenhouse_hoop_house_20x60/greenhouse.usdc"),
+    ),
+}
 PLANT_ASSET_CANDIDATES = (
     "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Vegetation/Shrub/Daphne.usd",
     "http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Vegetation/Shrub/Daphne.usd",
@@ -63,7 +86,8 @@ class MyExtension(omni.ext.IExt):
 
         self._metric_labels = {}
         self._selected_plant_asset = None
-        self._window = ui.Window("Smart Farm Twin", width=480, height=560)
+        self._greenhouse_asset_preference = "auto"
+        self._window = ui.Window("Smart Farm Twin", width=500, height=620)
         with self._window.frame:
             with ui.VStack(spacing=8, height=0):
                 ui.Label("Strawberry Early-Shipment Twin", height=24)
@@ -79,11 +103,17 @@ class MyExtension(omni.ext.IExt):
                 self._metric_labels["yield_score"] = self._add_info_row("Yield Score", "-")
                 self._metric_labels["opex"] = self._add_info_row("OpEx Delta", "-")
                 self._metric_labels["recommendation"] = self._add_info_row("Recommendation", "-")
+                self._metric_labels["greenhouse_asset"] = self._add_info_row("Greenhouse Asset", "Procedural fallback")
                 self._metric_labels["plant_asset"] = self._add_info_row("Plant Asset", "Procedural fallback")
 
                 ui.Spacer(height=8)
                 self._status_label = ui.Label(DEFAULT_STATUS, word_wrap=True)
                 ui.Spacer(height=8)
+
+                with ui.HStack(spacing=8, height=28):
+                    ui.Button("Auto Asset", clicked_fn=lambda: self._set_greenhouse_asset_preference("auto"))
+                    ui.Button("Generic", clicked_fn=lambda: self._set_greenhouse_asset_preference("generic"))
+                    ui.Button("Hoop", clicked_fn=lambda: self._set_greenhouse_asset_preference("hoop"))
 
                 with ui.HStack(spacing=8, height=32):
                     ui.Button(
@@ -103,6 +133,15 @@ class MyExtension(omni.ext.IExt):
 
     def _set_status(self, text: str):
         self._status_label.text = text
+
+    def _set_greenhouse_asset_preference(self, preference: str):
+        self._greenhouse_asset_preference = preference
+        label = {
+            "auto": "Auto greenhouse asset selection enabled.",
+            "generic": "Generic greenhouse candidate selected. Click Create Twin Scene after conversion.",
+            "hoop": "Hoop house 20x60 candidate selected. Click Create Twin Scene after conversion.",
+        }[preference]
+        self._set_status(label)
 
     def _on_create_twin_scene(self):
         stage = self._get_stage()
@@ -150,9 +189,10 @@ class MyExtension(omni.ext.IExt):
         stage.SetDefaultPrim(world.GetPrim())
         UsdGeom.Xform.Define(stage, SMART_FARM_PATH)
 
-        greenhouse_asset = self._find_named_asset("greenhouse")
+        greenhouse_asset_label, greenhouse_asset = self._find_greenhouse_asset()
         strawberry_asset = self._find_plant_asset()
         self._selected_plant_asset = strawberry_asset
+        self._metric_labels["greenhouse_asset"].text = greenhouse_asset_label
         self._metric_labels["plant_asset"].text = self._asset_label(strawberry_asset)
 
         self._create_site_floor(stage)
@@ -666,6 +706,14 @@ class MyExtension(omni.ext.IExt):
             if candidate.exists():
                 return candidate
         return None
+
+    def _find_greenhouse_asset(self):
+        candidates = GREENHOUSE_ASSET_CANDIDATES[self._greenhouse_asset_preference]
+        for label, relative_path in candidates:
+            candidate = ASSET_DIR / relative_path
+            if candidate.exists():
+                return label, candidate
+        return "Procedural fallback", None
 
     def _find_plant_asset(self):
         for relative_path in PLANT_ASSET_CANDIDATES:
