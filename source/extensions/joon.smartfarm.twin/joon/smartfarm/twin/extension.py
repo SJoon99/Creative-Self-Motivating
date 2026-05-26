@@ -20,6 +20,15 @@ DEFAULT_STATUS = "Ready to create the first smart farm twin scene."
 SMART_FARM_PATH = "/World/SmartFarm"
 EXTENSION_ROOT = Path(__file__).resolve().parents[3]
 ASSET_DIR = EXTENSION_ROOT / "assets"
+PROJECT_ROOT = next(
+    (
+        parent
+        for parent in (EXTENSION_ROOT, *EXTENSION_ROOT.parents)
+        if (parent / "source").is_dir() and (parent / "_build").is_dir()
+    ),
+    EXTENSION_ROOT,
+)
+OWN_TYPE_DIR = PROJECT_ROOT / "source" / "OwnType"
 GREENHOUSE_LENGTH = 56.0
 GREENHOUSE_WIDTH = 18.0
 GREENHOUSE_WALL_HEIGHT = 4.2
@@ -29,6 +38,49 @@ BED_Z_POSITIONS = (-6.2, -3.8, 3.8, 6.2)
 PLANT_X_POSITIONS = (-21, -17, -13, -9, -5, -1, 3, 7, 11, 15, 19, 23)
 GUTTER_HEIGHT = 1.55
 LED_Z_POSITIONS = (-5.5, -3.1, 3.1, 5.5)
+LED_STRIP_INTENSITY = 12000.0
+INTERIOR_FILL_INTENSITY = 4500.0
+STRAWBERRY_FRUIT_ASSET_SCALE = 0.055
+STRAWBERRY_FRUIT_ASSET_ROTATION = (-90, 0, 0)
+FAN_ASSET_SCALE = 0.0085
+FAN_ASSET_ROTATION = (-90, 90, 0)
+FAN_ASSET_Y = 5.85
+FAN_DROP_ROD_Y = 6.48
+FAN_DROP_ROD_DEPTH = 1.15
+SIMULATION_START_DAY = 0.0
+SIMULATION_RUNNER_DAY = 20.0
+SIMULATION_FRUIT_SET_DAY = 38.0
+SIMULATION_HARVEST_DAY = 60.0
+PLANT_INITIAL_SCALE = 0.011
+PLANT_FINAL_SCALE = 0.020
+RUNNER_INITIAL_SCALE = (1.0, 0.05, 1.0)
+RUNNER_FINAL_SCALE = (1.0, 1.0, 1.0)
+FRUIT_INITIAL_SCALE_FACTOR = 0.08
+FRUIT_MID_SCALE_FACTOR = 0.45
+BASELINE_VIRTUAL_SENSOR_STATE = {
+    "scenario_seed": "cloudy-winter-low-light",
+    "twin_day": 18,
+    "crop_stage": "flowering_delayed_fruit_set",
+    "growth_index": 0.42,
+    "dli_mol_m2_day": 11.2,
+    "substrate_moisture_percent": 31,
+    "humidity_percent": 82,
+    "temperature_c": 24.8,
+    "co2_ppm": 420,
+    "disease_risk": "high",
+}
+OPTIMIZED_VIRTUAL_SENSOR_STATE = {
+    "scenario_seed": "gemma-blueprint-b",
+    "twin_day": 18,
+    "crop_stage": "fruiting_early_harvest",
+    "growth_index": 0.61,
+    "dli_mol_m2_day": 17.8,
+    "substrate_moisture_percent": 48,
+    "humidity_percent": 68,
+    "temperature_c": 23.6,
+    "co2_ppm": 650,
+    "disease_risk": "controlled",
+}
 GREENHOUSE_UNITS = (
     ("House_01_01", -GREENHOUSE_LENGTH / 2.0, -GREENHOUSE_WIDTH / 2.0),
     ("House_01_02", GREENHOUSE_LENGTH / 2.0, -GREENHOUSE_WIDTH / 2.0),
@@ -47,6 +99,13 @@ PLANT_ASSET_CANDIDATES = (
     "official/aec_demo/Demos/AEC/BrownstoneDemo/Assets/Vegetation/Shrub/Hydrangea.usd",
     "official/aec_demo/Demos/AEC/BrownstoneDemo/Assets/Vegetation/Shrub/Goldflame_Spirea.usd",
 )
+STRAWBERRY_FRUIT_ASSET_CANDIDATES = (
+    "strawberry.glb",
+)
+FAN_ASSET_CANDIDATES = (
+    "DrumFan_A01_01.usd",
+    "DrumFanA01_01.usd",
+)
 
 
 # Any class derived from `omni.ext.IExt` in the top level module (defined in
@@ -64,7 +123,9 @@ class MyExtension(omni.ext.IExt):
 
         self._metric_labels = {}
         self._selected_plant_asset = None
-        self._window = ui.Window("Smart Farm Twin", width=500, height=640)
+        self._strawberry_fruit_asset = None
+        self._animate_growth = False
+        self._window = ui.Window("Smart Farm Twin", width=540, height=780)
         with self._window.frame:
             with ui.VStack(spacing=8, height=0):
                 ui.Label("Strawberry Early-Shipment Twin", height=24)
@@ -77,7 +138,7 @@ class MyExtension(omni.ext.IExt):
                 self._add_info_row("Target Shipment", "2026-12-22")
                 self._metric_labels["scenario"] = self._add_info_row("Scenario", "Not run")
                 self._metric_labels["light"] = self._add_info_row("Light", "-")
-                self._metric_labels["moisture"] = self._add_info_row("Moisture", "-")
+                self._metric_labels["moisture"] = self._add_info_row("Irrigation", "-")
                 self._metric_labels["fan"] = self._add_info_row("Fan", "-")
                 self._metric_labels["expected_shipment"] = self._add_info_row("Expected Shipment", "-")
                 self._metric_labels["yield_score"] = self._add_info_row("Yield Score", "-")
@@ -91,13 +152,31 @@ class MyExtension(omni.ext.IExt):
 
                 with ui.HStack(spacing=8, height=32):
                     ui.Button(
-                        "Create Twin Scene",
-                        clicked_fn=self._on_create_twin_scene,
+                        "Create Mature Scene",
+                        clicked_fn=self._on_create_mature_scene,
                     )
+                    ui.Button(
+                        "Create Growth Simulation",
+                        clicked_fn=self._on_create_growth_simulation,
+                    )
+                with ui.HStack(spacing=8, height=32):
                     ui.Button(
                         "Run Demo Scenario",
                         clicked_fn=self._on_run_demo_scenario,
                     )
+                    ui.Button(
+                        "Reset Growth Timeline",
+                        clicked_fn=self._on_reset_growth_timeline,
+                    )
+
+                ui.Separator(height=4)
+                ui.Label("Virtual Sensor State", height=22)
+                self._metric_labels["sensor_seed"] = self._add_info_row("Sensor Seed", "-")
+                self._metric_labels["sensor_dli"] = self._add_info_row("DLI Sensor", "-")
+                self._metric_labels["sensor_moisture"] = self._add_info_row("Soil Moisture Sensor", "-")
+                self._metric_labels["sensor_humidity"] = self._add_info_row("Humidity Sensor", "-")
+                self._metric_labels["sensor_temperature"] = self._add_info_row("Temperature Sensor", "-")
+                self._metric_labels["sensor_co2"] = self._add_info_row("CO2 Sensor", "-")
 
     def _add_info_row(self, label: str, value: str):
         with ui.HStack(height=24):
@@ -108,17 +187,30 @@ class MyExtension(omni.ext.IExt):
     def _set_status(self, text: str):
         self._status_label.text = text
 
-    def _on_create_twin_scene(self):
+    def _on_create_mature_scene(self):
         stage = self._get_stage()
         if stage is None:
             self._set_status("No USD stage is available yet. Create or open a stage first.")
             return
 
-        self._build_smart_farm_scene(stage)
+        self._build_smart_farm_scene(stage, animate_growth=False)
+        self._update_mature_metrics()
+        self._set_status("Mature V1 scene created: runners and strawberries are fully visible.")
+
+    def _on_create_growth_simulation(self):
+        stage = self._get_stage()
+        if stage is None:
+            self._set_status("No USD stage is available yet. Create or open a stage first.")
+            return
+
+        self._build_smart_farm_scene(stage, animate_growth=True)
         self._update_baseline_metrics()
         self._set_status(
-            "Twin scene created: baseline risk state loaded for Gemma 4.0 scenario optimization."
+            "Growth simulation created: press Play on the Timeline to watch 0-60 days."
         )
+
+    def _on_create_twin_scene(self):
+        self._on_create_growth_simulation()
 
     def _on_run_demo_scenario(self):
         stage = self._get_stage()
@@ -127,13 +219,24 @@ class MyExtension(omni.ext.IExt):
             return
 
         if not stage.GetPrimAtPath(SMART_FARM_PATH):
-            self._build_smart_farm_scene(stage)
+            self._build_smart_farm_scene(stage, animate_growth=False)
 
+        self._apply_virtual_sensor_state_to_scene(stage, OPTIMIZED_VIRTUAL_SENSOR_STATE)
         self._apply_demo_scenario(stage)
         self._update_demo_metrics()
         self._set_status(
             "Gemma 4.0 blueprint applied: LED, irrigation, and fan controls recover the shipment target."
         )
+
+    def _on_reset_growth_timeline(self):
+        stage = self._get_stage()
+        if stage is None:
+            self._set_status("No USD stage is available yet. Create or open a stage first.")
+            return
+
+        self._build_smart_farm_scene(stage, animate_growth=True)
+        self._update_baseline_metrics()
+        self._set_status("Growth timeline reset to day 0. Press Play on the Timeline.")
 
     def _get_stage(self):
         usd_context = omni.usd.get_context()
@@ -143,7 +246,8 @@ class MyExtension(omni.ext.IExt):
             stage = usd_context.get_stage()
         return stage
 
-    def _build_smart_farm_scene(self, stage):
+    def _build_smart_farm_scene(self, stage, animate_growth=False):
+        self._animate_growth = animate_growth
         smart_farm_path = Sdf.Path(SMART_FARM_PATH)
         if stage.GetPrimAtPath(smart_farm_path):
             stage.RemovePrim(smart_farm_path)
@@ -157,12 +261,18 @@ class MyExtension(omni.ext.IExt):
 
         greenhouse_asset = self._find_named_asset("greenhouse")
         strawberry_asset = self._find_plant_asset()
+        self._strawberry_fruit_asset = self._find_strawberry_fruit_asset()
         self._selected_plant_asset = strawberry_asset
         self._metric_labels["plant_asset"].text = self._asset_label(strawberry_asset)
 
         self._create_site_floor(stage)
         self._create_greenhouse_units(stage, greenhouse_asset, strawberry_asset)
         self._create_lighting(stage)
+        self._apply_virtual_sensor_state_to_scene(stage, BASELINE_VIRTUAL_SENSOR_STATE)
+        if animate_growth:
+            self._configure_growth_simulation_timeline(stage)
+        else:
+            self._configure_static_timeline(stage)
         self._update_baseline_metrics()
 
     def _create_site_floor(self, stage):
@@ -428,32 +538,67 @@ class MyExtension(omni.ext.IExt):
     def _create_actuators(self, stage, unit_path):
         group = f"{unit_path}/Actuators"
         UsdGeom.Xform.Define(stage, group)
+        fan_asset = self._find_fan_asset()
 
         for i, z in enumerate(LED_Z_POSITIONS, start=1):
-            self._create_cube(stage, f"{group}/LEDStrip_{i}", (0, 4.25, z), (BED_LENGTH, 0.06, 0.10), (1.0, 0.86, 0.32))
+            led_strip = self._create_cube(
+                stage,
+                f"{group}/LEDStrip_{i}",
+                (0, 4.25, z),
+                (BED_LENGTH, 0.08, 0.14),
+                (1.0, 0.92, 0.30),
+            )
+            self._bind_emissive_material(stage, led_strip.GetPrim(), (1.0, 0.86, 0.28), LED_STRIP_INTENSITY)
             self._create_led_rect_light(
                 stage,
                 f"{group}/LEDStripLight_{i}",
                 translation=(0, 4.12, z),
                 width=BED_LENGTH - 1.0,
                 height=0.18,
-                intensity=420.0,
+                intensity=LED_STRIP_INTENSITY,
                 color=(1.0, 0.86, 0.42),
             )
 
         for i, x in enumerate((-18.0, 0.0, 18.0), start=1):
-            self._create_cylinder(stage, f"{group}/CeilingFan_{i}", (x, 6.55, 0), radius=0.78, depth=0.16, color=(0.12, 0.14, 0.15))
-            self._create_cube(stage, f"{group}/CeilingFanHub_{i}", (x, 6.55, 0), (0.30, 0.18, 0.30), (0.34, 0.38, 0.40))
-            self._create_cylinder(stage, f"{group}/CeilingFanDropRod_{i}", (x, 7.08, 0), radius=0.035, depth=1.05, color=(0.42, 0.46, 0.48))
-            for blade_index, rotation in enumerate((0, 60, 120), start=1):
+            self._create_cylinder(
+                stage,
+                f"{group}/CeilingFanDropRod_{i}",
+                (x, FAN_DROP_ROD_Y, 0),
+                radius=0.030,
+                depth=FAN_DROP_ROD_DEPTH,
+                color=(0.42, 0.46, 0.48),
+            )
+            if fan_asset:
+                self._reference_asset(
+                    stage,
+                    f"{group}/CeilingFan_{i}",
+                    fan_asset,
+                    translation=(x, FAN_ASSET_Y, 0),
+                    scale=(FAN_ASSET_SCALE, FAN_ASSET_SCALE, FAN_ASSET_SCALE),
+                    rotation=FAN_ASSET_ROTATION,
+                    instanceable=True,
+                )
                 self._create_cube(
                     stage,
-                    f"{group}/CeilingFanBlade_{i}_{blade_index}",
-                    (x, 6.55, 0),
-                    (1.72, 0.035, 0.16),
-                    (0.58, 0.62, 0.64),
-                    rotation=(0, rotation, 0),
+                    f"{group}/CeilingFanStatusGlow_{i}",
+                    (x, FAN_ASSET_Y - 0.25, 0),
+                    (1.85, 0.05, 1.85),
+                    (0.55, 0.95, 1.0),
+                    opacity=0.0,
+                    roughness=0.04,
                 )
+            else:
+                self._create_cylinder(stage, f"{group}/CeilingFan_{i}", (x, FAN_ASSET_Y, 0), radius=0.78, depth=0.16, color=(0.12, 0.14, 0.15))
+                self._create_cube(stage, f"{group}/CeilingFanHub_{i}", (x, FAN_ASSET_Y, 0), (0.30, 0.18, 0.30), (0.34, 0.38, 0.40))
+                for blade_index, rotation in enumerate((0, 60, 120), start=1):
+                    self._create_cube(
+                        stage,
+                        f"{group}/CeilingFanBlade_{i}_{blade_index}",
+                        (x, FAN_ASSET_Y, 0),
+                        (1.72, 0.035, 0.16),
+                        (0.58, 0.62, 0.64),
+                        rotation=(0, rotation, 0),
+                    )
             for flow_index, y in enumerate((5.95, 5.35, 4.75), start=1):
                 self._create_cube(
                     stage,
@@ -474,23 +619,52 @@ class MyExtension(omni.ext.IExt):
         UsdGeom.Xform.Define(stage, group)
 
         sensors = [
-            ("TemperatureHumidity", (-18.0, 2.2, -7.2), (0.90, 0.28, 0.10)),
-            ("CO2", (-6.0, 2.2, 7.2), (0.15, 0.15, 0.15)),
-            ("Light", (6.0, 4.5, -7.2), (1.0, 0.78, 0.10)),
-            ("SoilMoisture", (18.0, 1.35, 7.2), (0.06, 0.28, 0.85)),
+            ("Light", (6.0, 2.18, -5.0), (0.34, 0.18, 0.34), (1.0, 0.78, 0.10)),
+            ("SoilMoisture", (18.0, GUTTER_HEIGHT + 0.22, 7.2), (0.35, 0.35, 0.35), (0.06, 0.28, 0.85)),
+            ("Humidity", (-18.0, 2.35, -8.92), (0.46, 0.34, 0.08), (0.90, 0.28, 0.10)),
+            ("Temperature", (-14.0, 2.35, -8.92), (0.46, 0.34, 0.08), (0.74, 0.18, 0.12)),
+            ("CO2", (-6.0, 2.35, 8.92), (0.46, 0.34, 0.08), (0.15, 0.15, 0.15)),
         ]
-        for name, position, color in sensors:
-            self._create_cube(stage, f"{group}/{name}Sensor", position, (0.35, 0.35, 0.35), color)
+        for name, position, scale, color in sensors:
+            sensor = self._create_cube(stage, f"{group}/{name}Sensor", position, scale, color)
+            self._tag_sensor_prim(sensor.GetPrim(), name)
+            self._create_sphere(
+                stage,
+                f"{group}/{name}SensorStatus",
+                (position[0], position[1] + 0.28, position[2]),
+                scale=(0.09, 0.09, 0.09),
+                color=color,
+            )
+
+        self._create_cube(stage, f"{group}/LightSensorCollector", (6.0, 2.34, -5.0), (0.62, 0.025, 0.62), (1.0, 0.92, 0.42))
+        for z in BED_Z_POSITIONS:
+            safe_z = self._safe_name(z)
+            self._create_cylinder(
+                stage,
+                f"{group}/SoilMoistureProbe_{safe_z}_A",
+                (18.28, GUTTER_HEIGHT + 0.24, z - 0.18),
+                radius=0.012,
+                depth=0.58,
+                color=(0.70, 0.78, 0.82),
+            )
+            self._create_cylinder(
+                stage,
+                f"{group}/SoilMoistureProbe_{safe_z}_B",
+                (18.44, GUTTER_HEIGHT + 0.24, z + 0.18),
+                radius=0.012,
+                depth=0.58,
+                color=(0.70, 0.78, 0.82),
+            )
 
     def _create_lighting(self, stage):
         group = f"{SMART_FARM_PATH}/Lighting"
         UsdGeom.Xform.Define(stage, group)
 
         dome = UsdLux.DomeLight.Define(stage, f"{group}/SoftSky")
-        dome.CreateIntensityAttr(650.0)
+        dome.CreateIntensityAttr(2000.0)
 
         sun = UsdLux.DistantLight.Define(stage, f"{group}/Sun")
-        sun.CreateIntensityAttr(3200.0)
+        sun.CreateIntensityAttr(9000.0)
         sun.CreateAngleAttr(1.2)
         self._set_transform(sun.GetPrim(), rotation=(-45, 35, 0))
 
@@ -499,44 +673,60 @@ class MyExtension(omni.ext.IExt):
         for unit_name, x_offset, z_offset in GREENHOUSE_UNITS:
             for index, x in enumerate((-18.0, 0.0, 18.0), start=1):
                 light = UsdLux.SphereLight.Define(stage, f"{fill_group}/{unit_name}_{index:02d}")
-                light.CreateIntensityAttr(850.0)
-                light.CreateRadiusAttr(0.12)
+                light.CreateIntensityAttr(INTERIOR_FILL_INTENSITY)
+                light.CreateRadiusAttr(0.65)
                 light.CreateColorAttr(Gf.Vec3f(1.0, 0.96, 0.88))
                 self._set_transform(light.GetPrim(), translation=(x_offset + x, 5.4, z_offset))
+
+    def _configure_growth_simulation_timeline(self, stage):
+        stage.SetStartTimeCode(SIMULATION_START_DAY)
+        stage.SetEndTimeCode(SIMULATION_HARVEST_DAY)
+        stage.SetFramesPerSecond(1.0)
+        stage.SetTimeCodesPerSecond(1.0)
+        self._sync_timeline_playback(SIMULATION_START_DAY, SIMULATION_HARVEST_DAY)
+
+    def _configure_static_timeline(self, stage):
+        stage.SetStartTimeCode(SIMULATION_START_DAY)
+        stage.SetEndTimeCode(SIMULATION_START_DAY)
+        stage.SetFramesPerSecond(1.0)
+        stage.SetTimeCodesPerSecond(1.0)
+        self._sync_timeline_playback(SIMULATION_START_DAY, SIMULATION_START_DAY)
+
+    def _sync_timeline_playback(self, start_time, end_time):
+        try:
+            import omni.timeline
+
+            timeline = omni.timeline.get_timeline_interface()
+            timeline.set_start_time(start_time)
+            timeline.set_end_time(end_time)
+            timeline.set_current_time(start_time)
+        except Exception:
+            pass
 
     def _create_plant(self, stage, group, bed_index, plant_index, x, z, strawberry_asset=None):
         base = f"{group}/Bed_{bed_index:02d}_Plant_{plant_index:02d}"
         UsdGeom.Xform.Define(stage, base)
         hang_direction = -1 if z > 0 else 1
         crown_z = z + hang_direction * 0.28
-        fruit_z = z + hang_direction * 0.42
         if strawberry_asset:
-            self._reference_asset(
+            plant_scale = PLANT_INITIAL_SCALE if self._animate_growth else PLANT_FINAL_SCALE
+            plant = self._reference_asset(
                 stage,
                 f"{base}/ExternalModel",
                 strawberry_asset,
                 translation=(x, GUTTER_HEIGHT + 0.42, crown_z),
-                scale=(0.020, 0.020, 0.020),
+                scale=(plant_scale, plant_scale, plant_scale),
                 rotation=(-90, (plant_index % 4) * 35, 0),
                 instanceable=True,
             )
-            self._create_cylinder(
-                stage,
-                f"{base}/HangingRunner",
-                (x + 0.08, GUTTER_HEIGHT - 0.18, fruit_z),
-                radius=0.018,
-                depth=0.78,
-                color=(0.10, 0.34, 0.08),
-            )
-            self._create_sphere(
-                stage,
-                f"{base}/Flower",
-                (x + 0.18, GUTTER_HEIGHT - 0.02, fruit_z),
-                scale=(0.055, 0.055, 0.055),
-                color=(0.95, 0.95, 0.90),
-            )
-            if plant_index in (4, 9):
-                self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.12, GUTTER_HEIGHT - 0.14, fruit_z), ripe=False)
+            if self._animate_growth:
+                self._animate_plant_growth(
+                    plant.GetPrim(),
+                    translation=(x, GUTTER_HEIGHT + 0.42, crown_z),
+                    rotation=(-90, (plant_index % 4) * 35, 0),
+                )
+            self._create_hanging_runners(stage, base, x, z)
+            self._create_strawberry_fruits(stage, base, x, z)
             return
 
         self._create_cylinder(
@@ -547,19 +737,12 @@ class MyExtension(omni.ext.IExt):
             depth=0.34,
             color=(0.12, 0.36, 0.08),
         )
-        self._create_cylinder(
-            stage,
-            f"{base}/HangingRunner",
-            (x + 0.08, GUTTER_HEIGHT - 0.18, fruit_z),
-            radius=0.018,
-            depth=0.78,
-            color=(0.10, 0.34, 0.08),
-        )
         self._create_leaf(stage, f"{base}/Leaf_01", (x - 0.24, GUTTER_HEIGHT + 0.34, crown_z), (-10, 0, 30))
         self._create_leaf(stage, f"{base}/Leaf_02", (x + 0.24, GUTTER_HEIGHT + 0.34, crown_z), (-10, 0, -30))
         self._create_leaf(stage, f"{base}/Leaf_03", (x, GUTTER_HEIGHT + 0.42, crown_z + hang_direction * 0.22), (8, 0, 0))
         self._create_leaf(stage, f"{base}/Leaf_04", (x + 0.08, GUTTER_HEIGHT + 0.18, crown_z + hang_direction * 0.42), (-24, 0, 0))
         self._create_leaf(stage, f"{base}/Leaf_05", (x - 0.12, GUTTER_HEIGHT + 0.12, crown_z + hang_direction * 0.52), (-35, 0, 16))
+        self._create_hanging_runners(stage, base, x, z)
         self._create_sphere(
             stage,
             f"{base}/LeafCluster",
@@ -567,16 +750,42 @@ class MyExtension(omni.ext.IExt):
             scale=(0.40, 0.18, 0.34),
             color=(0.035, 0.40, 0.12),
         )
-        self._create_sphere(
-            stage,
-            f"{base}/Flower",
-            (x + 0.22, GUTTER_HEIGHT - 0.02, fruit_z),
-            scale=(0.055, 0.055, 0.055),
-            color=(0.95, 0.95, 0.90),
-        )
+        self._create_strawberry_fruits(stage, base, x, z)
 
-        if plant_index in (4, 9):
-            self._create_strawberry_fruit(stage, f"{base}/Fruit_Unripe", (x + 0.12, GUTTER_HEIGHT - 0.18, fruit_z), ripe=False)
+    def _create_hanging_runners(self, stage, base, x, bed_z):
+        for side_name, side_offset in (("Left", -0.42), ("Right", 0.42)):
+            runner = self._create_cylinder(
+                stage,
+                f"{base}/HangingRunner_{side_name}",
+                (x, GUTTER_HEIGHT - 0.18, bed_z + side_offset),
+                radius=0.018,
+                depth=0.78,
+                color=(0.10, 0.34, 0.08),
+            )
+            if self._animate_growth:
+                self._animate_runner_growth(
+                    runner.GetPrim(),
+                    translation=(x, GUTTER_HEIGHT - 0.18, bed_z + side_offset),
+                )
+
+    def _create_strawberry_fruits(self, stage, base, x, bed_z):
+        for side_name, side_offset in (("Left", -0.42), ("Right", 0.42)):
+            fruit = self._create_strawberry_fruit(
+                stage,
+                f"{base}/Fruit_Unripe_{side_name}",
+                self._runner_fruit_position(x, bed_z, side_offset),
+                ripe=False,
+            )
+            if fruit:
+                if self._animate_growth:
+                    self._animate_fruit_growth(
+                        fruit.GetPrim(),
+                        translation=self._runner_fruit_position(x, bed_z, side_offset),
+                        ripe=False,
+                    )
+
+    def _runner_fruit_position(self, x, bed_z, side_offset=0.42):
+        return (x, GUTTER_HEIGHT - 0.56, bed_z + side_offset)
 
     def _create_leaf(self, stage, path, translation, rotation):
         self._create_sphere(
@@ -589,14 +798,94 @@ class MyExtension(omni.ext.IExt):
         )
 
     def _create_strawberry_fruit(self, stage, path, translation, ripe=True):
+        if self._strawberry_fruit_asset:
+            scale = STRAWBERRY_FRUIT_ASSET_SCALE * (1.15 if ripe else 0.85)
+            return self._reference_asset(
+                stage,
+                path,
+                self._strawberry_fruit_asset,
+                translation=translation,
+                scale=(scale, scale, scale),
+                rotation=STRAWBERRY_FRUIT_ASSET_ROTATION,
+                instanceable=True,
+            )
+
         color = (0.92, 0.04, 0.035) if ripe else (0.86, 0.72, 0.16)
-        self._create_sphere(stage, path, translation, scale=(0.10, 0.14, 0.10), color=color)
+        fruit = self._create_sphere(stage, path, translation, scale=(0.10, 0.14, 0.10), color=color)
         self._create_sphere(
             stage,
             f"{path}_Calyx",
             (translation[0], translation[1] + 0.11, translation[2]),
             scale=(0.08, 0.025, 0.08),
             color=(0.05, 0.30, 0.07),
+        )
+        return fruit
+
+    def _animate_plant_growth(self, prim, translation, rotation):
+        self._set_animated_transform(
+            prim,
+            translation=translation,
+            rotation=rotation,
+            scale_keys=(
+                (SIMULATION_START_DAY, (PLANT_INITIAL_SCALE, PLANT_INITIAL_SCALE, PLANT_INITIAL_SCALE)),
+                (SIMULATION_RUNNER_DAY, (0.016, 0.016, 0.016)),
+                (SIMULATION_HARVEST_DAY, (PLANT_FINAL_SCALE, PLANT_FINAL_SCALE, PLANT_FINAL_SCALE)),
+            ),
+        )
+
+    def _animate_runner_growth(self, prim, translation):
+        self._set_visibility_animation(
+            prim,
+            (
+                (SIMULATION_START_DAY, UsdGeom.Tokens.invisible),
+                (SIMULATION_RUNNER_DAY - 0.1, UsdGeom.Tokens.invisible),
+                (SIMULATION_RUNNER_DAY, UsdGeom.Tokens.inherited),
+                (SIMULATION_HARVEST_DAY, UsdGeom.Tokens.inherited),
+            ),
+        )
+        self._set_animated_transform(
+            prim,
+            translation=translation,
+            scale_keys=(
+                (SIMULATION_RUNNER_DAY, RUNNER_INITIAL_SCALE),
+                (SIMULATION_HARVEST_DAY, RUNNER_FINAL_SCALE),
+            ),
+        )
+
+    def _animate_fruit_growth(self, prim, translation, ripe=False):
+        final_scale = STRAWBERRY_FRUIT_ASSET_SCALE * (1.15 if ripe else 0.85)
+        self._set_visibility_animation(
+            prim,
+            (
+                (SIMULATION_START_DAY, UsdGeom.Tokens.invisible),
+                (SIMULATION_FRUIT_SET_DAY - 0.1, UsdGeom.Tokens.invisible),
+                (SIMULATION_FRUIT_SET_DAY, UsdGeom.Tokens.inherited),
+                (SIMULATION_HARVEST_DAY, UsdGeom.Tokens.inherited),
+            ),
+        )
+        self._set_animated_transform(
+            prim,
+            translation=translation,
+            rotation=STRAWBERRY_FRUIT_ASSET_ROTATION,
+            scale_keys=(
+                (
+                    SIMULATION_FRUIT_SET_DAY,
+                    (
+                        final_scale * FRUIT_INITIAL_SCALE_FACTOR,
+                        final_scale * FRUIT_INITIAL_SCALE_FACTOR,
+                        final_scale * FRUIT_INITIAL_SCALE_FACTOR,
+                    ),
+                ),
+                (
+                    (SIMULATION_FRUIT_SET_DAY + SIMULATION_HARVEST_DAY) / 2.0,
+                    (
+                        final_scale * FRUIT_MID_SCALE_FACTOR,
+                        final_scale * FRUIT_MID_SCALE_FACTOR,
+                        final_scale * FRUIT_MID_SCALE_FACTOR,
+                    ),
+                ),
+                (SIMULATION_HARVEST_DAY, (final_scale, final_scale, final_scale)),
+            ),
         )
 
     def _create_soil_clump(self, stage, group, bed_index, marker_index, x, z):
@@ -615,18 +904,45 @@ class MyExtension(omni.ext.IExt):
             self._activate_fans(stage, unit_path)
             self._update_plants_for_harvest(stage, unit_path)
 
+    def _sensor_metric_values(self, state):
+        return {
+            "sensor_seed": state["scenario_seed"],
+            "sensor_dli": f'{state["dli_mol_m2_day"]:.1f} mol/m2/day',
+            "sensor_moisture": f'{state["substrate_moisture_percent"]}% substrate',
+            "sensor_humidity": f'{state["humidity_percent"]}% RH',
+            "sensor_temperature": f'{state["temperature_c"]:.1f} C',
+            "sensor_co2": f'{state["co2_ppm"]} ppm',
+        }
+
     def _update_baseline_metrics(self):
         metrics = {
             "stage": "Flowering / delayed fruit set",
-            "scenario": "Baseline risk state",
+            "scenario": "60-day growth simulation ready",
             "light": "LED 40% / 12h",
             "moisture": "31% substrate",
             "fan": "0% idle",
-            "expected_shipment": "2026-12-29",
+            "expected_shipment": "2026-12-28",
             "yield_score": "72 / 100",
             "opex": "Baseline",
-            "recommendation": "Run Gemma 4.0 blueprint",
+            "recommendation": "Press Timeline Play, then run Gemma 4.0 blueprint",
         }
+        metrics.update(self._sensor_metric_values(BASELINE_VIRTUAL_SENSOR_STATE))
+        for key, value in metrics.items():
+            self._metric_labels[key].text = value
+
+    def _update_mature_metrics(self):
+        metrics = {
+            "stage": "Mature fruiting scene",
+            "scenario": "Static V1 environment",
+            "light": "LED 40% / 12h",
+            "moisture": "31% substrate",
+            "fan": "0% idle",
+            "expected_shipment": "2026-12-28",
+            "yield_score": "72 / 100",
+            "opex": "Baseline",
+            "recommendation": "Use Growth Simulation for Timeline playback",
+        }
+        metrics.update(self._sensor_metric_values(BASELINE_VIRTUAL_SENSOR_STATE))
         for key, value in metrics.items():
             self._metric_labels[key].text = value
 
@@ -634,14 +950,15 @@ class MyExtension(omni.ext.IExt):
         metrics = {
             "stage": "Fruiting -> early harvest",
             "scenario": "Gemma 4.0: LED + irrigation + fan",
-            "light": "LED 85% / 16h",
+            "light": "LED 80% / 16h",
             "moisture": "48% substrate",
-            "fan": "70% airflow",
+            "fan": "55% airflow",
             "expected_shipment": "2026-12-22",
             "yield_score": "87 / 100",
-            "opex": "+14% electricity/water",
+            "opex": "+18% electricity/water",
             "recommendation": "Keep optimized schedule",
         }
+        metrics.update(self._sensor_metric_values(OPTIMIZED_VIRTUAL_SENSOR_STATE))
         for key, value in metrics.items():
             self._metric_labels[key].text = value
 
@@ -654,8 +971,11 @@ class MyExtension(omni.ext.IExt):
 
             light = stage.GetPrimAtPath(f"{unit_path}/Actuators/LEDStripLight_{index}")
             if light:
-                UsdLux.RectLight(light).GetIntensityAttr().Set(1350.0)
+                UsdLux.RectLight(light).GetIntensityAttr().Set(LED_STRIP_INTENSITY)
                 UsdLux.RectLight(light).GetColorAttr().Set(Gf.Vec3f(1.0, 0.92, 0.34))
+            strip = stage.GetPrimAtPath(f"{unit_path}/Actuators/LEDStrip_{index}")
+            if strip:
+                self._bind_emissive_material(stage, strip, (1.0, 0.92, 0.30), LED_STRIP_INTENSITY)
 
     def _activate_irrigation(self, stage, unit_path):
         self._highlight_device(stage, f"{unit_path}/Actuators/WaterValve", (0.05, 0.55, 1.00), scale=(0.72, 0.56, 0.56))
@@ -669,14 +989,19 @@ class MyExtension(omni.ext.IExt):
                 self._set_display_color(soil, (0.09, 0.055, 0.035))
 
     def _activate_fans(self, stage, unit_path):
-        self._highlight_device(stage, f"{unit_path}/Sensors/TemperatureHumiditySensor", (0.12, 0.78, 0.92), scale=(0.46, 0.46, 0.46))
+        self._highlight_device(stage, f"{unit_path}/Sensors/HumiditySensor", (0.12, 0.78, 0.92), scale=(0.52, 0.38, 0.10))
+        self._highlight_device(stage, f"{unit_path}/Sensors/TemperatureSensor", (0.95, 0.48, 0.18), scale=(0.52, 0.38, 0.10))
+        self._highlight_device(stage, f"{unit_path}/Sensors/CO2Sensor", (0.45, 0.82, 0.45), scale=(0.52, 0.38, 0.10))
         for fan_index in range(1, 4):
             fan = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFan_{fan_index}")
             hub = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanHub_{fan_index}")
+            glow = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanStatusGlow_{fan_index}")
             if fan:
                 self._set_display_color(fan, (0.12, 0.70, 0.92))
             if hub:
                 self._set_display_color(hub, (0.72, 0.95, 1.00))
+            if glow:
+                self._set_translucent_visual(stage, glow, (0.55, 0.95, 1.0), 0.36, roughness=0.04)
             for blade_index in range(1, 4):
                 blade = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanBlade_{fan_index}_{blade_index}")
                 if blade:
@@ -685,6 +1010,58 @@ class MyExtension(omni.ext.IExt):
                 airflow = stage.GetPrimAtPath(f"{unit_path}/Actuators/CeilingFanAirflow_{fan_index}_{flow_index}")
                 if airflow:
                     self._set_translucent_visual(stage, airflow, (0.55, 0.95, 1.0), 0.62, roughness=0.04)
+
+    def _apply_virtual_sensor_state_to_scene(self, stage, state):
+        for unit_path in self._unit_paths():
+            self._update_sensor_prim(
+                stage,
+                f"{unit_path}/Sensors/LightSensor",
+                f'{state["dli_mol_m2_day"]:.1f} mol/m2/day',
+                (0.52, 0.90, 0.30) if state["dli_mol_m2_day"] >= 15.0 else (1.0, 0.66, 0.10),
+            )
+            moisture_color = (
+                (0.12, 0.82, 0.48) if state["substrate_moisture_percent"] >= 42 else (0.06, 0.28, 0.85)
+            )
+            self._update_sensor_prim(
+                stage,
+                f"{unit_path}/Sensors/SoilMoistureSensor",
+                f'{state["substrate_moisture_percent"]}% substrate',
+                moisture_color,
+            )
+            for z in BED_Z_POSITIONS:
+                safe_z = self._safe_name(z)
+                for suffix in ("A", "B"):
+                    probe = stage.GetPrimAtPath(f"{unit_path}/Sensors/SoilMoistureProbe_{safe_z}_{suffix}")
+                    if probe:
+                        self._set_display_color(probe, moisture_color)
+            self._update_sensor_prim(
+                stage,
+                f"{unit_path}/Sensors/HumiditySensor",
+                f'{state["humidity_percent"]}% RH',
+                (0.12, 0.78, 0.92) if state["humidity_percent"] <= 72 else (0.95, 0.32, 0.12),
+            )
+            self._update_sensor_prim(
+                stage,
+                f"{unit_path}/Sensors/TemperatureSensor",
+                f'{state["temperature_c"]:.1f} C',
+                (0.52, 0.90, 0.30) if 18.0 <= state["temperature_c"] <= 25.0 else (0.95, 0.32, 0.12),
+            )
+            self._update_sensor_prim(
+                stage,
+                f"{unit_path}/Sensors/CO2Sensor",
+                f'{state["co2_ppm"]} ppm',
+                (0.52, 0.90, 0.30) if state["co2_ppm"] >= 600 else (0.15, 0.15, 0.15),
+            )
+
+    def _update_sensor_prim(self, stage, path, reading, color):
+        prim = stage.GetPrimAtPath(path)
+        if not prim:
+            return
+        self._set_display_color(prim, color)
+        prim.CreateAttribute("smartfarm:reading", Sdf.ValueTypeNames.String).Set(reading)
+        status = stage.GetPrimAtPath(f"{path}Status")
+        if status:
+            self._set_display_color(status, color)
 
     def _highlight_device(self, stage, path, color, scale):
         prim = stage.GetPrimAtPath(path)
@@ -699,7 +1076,6 @@ class MyExtension(omni.ext.IExt):
             for plant_index in range(1, len(PLANT_X_POSITIONS) + 1):
                 base = f"{unit_path}/Plants/Bed_{bed_index:02d}_Plant_{plant_index:02d}"
                 leaf = stage.GetPrimAtPath(f"{base}/LeafCluster")
-                flower = stage.GetPrimAtPath(f"{base}/Flower")
                 fruit = stage.GetPrimAtPath(f"{base}/Fruit")
                 if leaf:
                     self._set_display_color(leaf, (0.02, 0.40, 0.12))
@@ -708,15 +1084,21 @@ class MyExtension(omni.ext.IExt):
                         translation=self._get_translate_value(leaf),
                         scale=(0.50, 0.24, 0.42),
                     )
-                if flower:
-                    self._set_display_color(flower, (1.0, 1.0, 0.92))
                 if fruit:
-                    self._set_display_color(fruit, (1.0, 0.03, 0.04))
-                    self._set_transform(
-                        fruit,
-                        translation=self._get_translate_value(fruit),
-                        scale=(0.12, 0.16, 0.12),
-                    )
+                    if fruit.IsA(UsdGeom.Gprim):
+                        self._set_display_color(fruit, (1.0, 0.03, 0.04))
+                        self._set_transform(
+                            fruit,
+                            translation=self._get_translate_value(fruit),
+                            scale=(0.12, 0.16, 0.12),
+                        )
+                    else:
+                        scale = STRAWBERRY_FRUIT_ASSET_SCALE * 1.15
+                        self._set_transform(
+                            fruit,
+                            translation=self._get_translate_value(fruit),
+                            scale=(scale, scale, scale),
+                        )
                 elif plant_index in (1, 3, 6, 9, 12):
                     self._create_strawberry_fruit(
                         stage,
@@ -728,8 +1110,8 @@ class MyExtension(omni.ext.IExt):
     def _fruit_position_for(self, bed_index, plant_index):
         x = PLANT_X_POSITIONS[plant_index - 1]
         z = BED_Z_POSITIONS[bed_index - 1]
-        hang_direction = -1 if z > 0 else 1
-        return (x - 0.16, GUTTER_HEIGHT - 0.32, z + hang_direction * 0.42)
+        side_offset = -0.42 if z > 0 else 0.42
+        return self._runner_fruit_position(x, z, side_offset)
 
     def _unit_paths(self):
         return [f"{SMART_FARM_PATH}/{unit_name}" for unit_name, _x, _z in GREENHOUSE_UNITS]
@@ -780,13 +1162,22 @@ class MyExtension(omni.ext.IExt):
         self._set_transform(xform.GetPrim(), translation=translation, rotation=rotation, scale=scale)
         return xform
 
+    def _tag_sensor_prim(self, prim, sensor_name):
+        prim.CreateAttribute("smartfarm:isPhysicalSensor", Sdf.ValueTypeNames.Bool).Set(True)
+        prim.CreateAttribute("smartfarm:sensorName", Sdf.ValueTypeNames.String).Set(sensor_name)
+        prim.CreateAttribute("smartfarm:source", Sdf.ValueTypeNames.String).Set("virtual-sensor-adapter")
+
     def _bind_preview_material(self, stage, prim, color, opacity, roughness=0.22):
         material = self._create_preview_material(stage, color, opacity, roughness)
         UsdShade.MaterialBindingAPI(prim).Bind(material)
 
-    def _create_preview_material(self, stage, color, opacity, roughness=0.22):
+    def _bind_emissive_material(self, stage, prim, color, intensity):
+        material = self._create_preview_material(stage, color, 1.0, roughness=0.04, emission=intensity / 1000.0)
+        UsdShade.MaterialBindingAPI(prim).Bind(material)
+
+    def _create_preview_material(self, stage, color, opacity, roughness=0.22, emission=0.0):
         material_name = (
-            f"Preview_{self._safe_name(opacity)}_{self._safe_name(roughness)}_"
+            f"Preview_{self._safe_name(opacity)}_{self._safe_name(roughness)}_{self._safe_name(emission)}_"
             f"{int(color[0] * 255)}_{int(color[1] * 255)}_{int(color[2] * 255)}"
         )
         material_path = f"{SMART_FARM_PATH}/Looks/{material_name}"
@@ -797,6 +1188,10 @@ class MyExtension(omni.ext.IExt):
         shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
         shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(opacity)
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+        if emission:
+            shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+                Gf.Vec3f(color[0] * emission, color[1] * emission, color[2] * emission)
+            )
         material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
         return material
 
@@ -810,11 +1205,32 @@ class MyExtension(omni.ext.IExt):
         if scale is not None:
             xformable.AddScaleOp().Set(Gf.Vec3f(*scale))
 
+    def _set_animated_transform(self, prim, translation=None, rotation=None, scale_keys=()):
+        xformable = UsdGeom.Xformable(prim)
+        xformable.ClearXformOpOrder()
+        if translation is not None:
+            xformable.AddTranslateOp().Set(Gf.Vec3d(*translation))
+        if rotation is not None:
+            xformable.AddRotateXYZOp().Set(Gf.Vec3f(*rotation))
+        if scale_keys:
+            scale_op = xformable.AddScaleOp()
+            for time_code, scale in scale_keys:
+                scale_op.Set(Gf.Vec3f(*scale), time_code)
+
+    def _set_visibility_animation(self, prim, visibility_keys):
+        visibility_attr = UsdGeom.Imageable(prim).CreateVisibilityAttr()
+        for time_code, value in visibility_keys:
+            visibility_attr.Set(value, time_code)
+
     def _set_display_color(self, prim, color):
+        if not prim.IsA(UsdGeom.Gprim):
+            return
         imageable = UsdGeom.Gprim(prim)
         imageable.CreateDisplayColorAttr([Gf.Vec3f(*color)])
 
     def _set_translucent_visual(self, stage, prim, color, opacity, roughness=0.10):
+        if not prim.IsA(UsdGeom.Gprim):
+            return
         imageable = UsdGeom.Gprim(prim)
         imageable.CreateDisplayColorAttr([Gf.Vec3f(*color)])
         imageable.CreateDisplayOpacityAttr([opacity])
@@ -840,9 +1256,28 @@ class MyExtension(omni.ext.IExt):
         for relative_path in PLANT_ASSET_CANDIDATES:
             if relative_path.startswith(("http://", "https://", "omniverse://")):
                 return relative_path
-            candidate = ASSET_DIR / relative_path
-            if candidate.exists():
-                return candidate
+            for root in (OWN_TYPE_DIR, ASSET_DIR):
+                candidate = root / relative_path
+                if candidate.exists():
+                    return candidate
+        return None
+
+    def _find_strawberry_fruit_asset(self):
+        for relative_path in STRAWBERRY_FRUIT_ASSET_CANDIDATES:
+            for root in (OWN_TYPE_DIR, ASSET_DIR):
+                candidate = root / relative_path
+                if candidate.exists():
+                    return candidate
+        return None
+
+    def _find_fan_asset(self):
+        for relative_path in FAN_ASSET_CANDIDATES:
+            if relative_path.startswith(("http://", "https://", "omniverse://")):
+                return relative_path
+            for root in (OWN_TYPE_DIR, ASSET_DIR):
+                candidate = root / relative_path
+                if candidate.exists():
+                    return candidate
         return None
 
     def _asset_label(self, asset_path):
