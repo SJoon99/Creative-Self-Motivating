@@ -201,7 +201,3 @@ python3 -m unittest joon.smartfarm.omniops.tests.test_model
 8. 필요 시 `Capture & Analyze Growth`로 생육 분석 흐름 확인
 
 ---
-
-## 참고
-
-이 프로젝트는 NVIDIA Omniverse Kit App Template 기반으로 개발된 SmartFarm 특화 POC이며, 이 저장소에는 SmartFarm 구현과 관련된 핵심 소스만 정리해 보관한다.
