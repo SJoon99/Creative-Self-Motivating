@@ -1,0 +1,184 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rag-strawberry.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "rag-strawberry.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "rag-strawberry.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/server: {{ .Files.Get "files/rag_server.py" | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "rag-strawberry.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: sync-repo
+          image: {{ .Values.gitSync.image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GIT_REPO
+              value: {{ .Values.gitSync.repo | quote }}
+            - name: GIT_REF
+              value: {{ .Values.gitSync.ref | quote }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              set -eu
+              if [ -d /data/repo/.git ]; then
+                git -C /data/repo remote set-url origin "$GIT_REPO"
+                git -C /data/repo fetch --depth=1 origin "$GIT_REF"
+                git -C /data/repo reset --hard FETCH_HEAD
+              else
+                rm -rf /data/repo
+                git clone --depth=1 --branch "$GIT_REF" "$GIT_REPO" /data/repo
+              fi
+              test -d /data/repo/chroma_db
+              test -f /data/repo/setpoints_table.json
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: PORT
+              value: {{ .Values.server.port | quote }}
+            - name: UVICORN_WORKERS
+              value: {{ .Values.server.workers | quote }}
+            - name: RAG_REPO_DIR
+              value: /data/repo
+            - name: DB_DIR
+              value: /data/repo/chroma_db
+            - name: TABLE_PATH
+              value: /data/repo/setpoints_table.json
+            - name: COLLECTION_NAME
+              value: {{ .Values.rag.collectionName | quote }}
+            - name: EMBEDDING_MODEL
+              value: {{ .Values.rag.embeddingModel | quote }}
+            - name: TOP_K
+              value: {{ .Values.rag.topK | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            - name: OPENAI_BASE_URL
+              value: {{ .Values.llm.baseUrl | quote }}
+            - name: VERIFY_LLM_ON_STARTUP
+              value: {{ .Values.server.verifyLlmOnStartup | quote }}
+            - name: HF_HOME
+              value: /data/hf
+            - name: SENTENCE_TRANSFORMERS_HOME
+              value: /data/hf/sentence-transformers
+            - name: PIP_CACHE_DIR
+              value: /data/pip-cache
+            - name: TOKENIZERS_PARALLELISM
+              value: "false"
+            {{- if .Values.llm.apiKeySecret.enabled }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.apiKeySecret.name }}
+                  key: {{ .Values.llm.apiKeySecret.key }}
+            {{- else }}
+            - name: OPENAI_API_KEY
+              value: "EMPTY"
+            {{- end }}
+            {{- if .Values.apiAuth.enabled }}
+            - name: RAG_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiAuth.secretName }}
+                  key: {{ .Values.apiAuth.secretKey }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              set -eu
+              DEPS_HASH="$(sha256sum /data/repo/requirements.txt /opt/rag-server/rag_server.py | sha256sum | awk '{print $1}')"
+              if [ ! -x /data/venv/bin/uvicorn ] || [ ! -f "/data/venv/.deps-${DEPS_HASH}" ]; then
+                rm -rf /data/venv
+                python -m venv /data/venv
+                /data/venv/bin/python -m pip install --upgrade pip setuptools wheel
+                /data/venv/bin/python -m pip install --upgrade -r /data/repo/requirements.txt fastapi "uvicorn[standard]" openai
+                touch "/data/venv/.deps-${DEPS_HASH}"
+              fi
+              exec /data/venv/bin/uvicorn rag_server:app \
+                --host 0.0.0.0 \
+                --port "$PORT" \
+                --workers "$UVICORN_WORKERS" \
+                --app-dir /opt/rag-server
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: server-code
+              mountPath: /opt/rag-server/rag_server.py
+              subPath: rag_server.py
+              readOnly: true
+      volumes:
+        - name: server-code
+          configMap:
+            name: {{ include "rag-strawberry.fullname" . }}-server
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "rag-strawberry.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

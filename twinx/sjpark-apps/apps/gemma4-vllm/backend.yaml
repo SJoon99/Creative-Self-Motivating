@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gemma4-vllm-cache
+  namespace: sjpark
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: rook-ceph-block
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma4-vllm-backend
+  namespace: sjpark
+spec:
+  selector:
+    app: gemma4-vllm
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma4-vllm
+  namespace: sjpark
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gemma4-vllm
+  template:
+    metadata:
+      labels:
+        app: gemma4-vllm
+    spec:
+      serviceAccountName: sjpark-sa
+      terminationGracePeriodSeconds: 300
+      nodeSelector:
+        kubernetes.io/hostname: sv4000-1
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:gemma4
+        imagePullPolicy: IfNotPresent
+        args:
+        - google/gemma-4-26B-A4B-it
+        - --served-model-name
+        - gemma4
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8000"
+        - --quantization
+        - fp8
+        - --dtype
+        - auto
+        - --tensor-parallel-size
+        - "1"
+        - --max-model-len
+        - "16384"
+        - --max-num-seqs
+        - "8"
+        - --gpu-memory-utilization
+        - "0.90"
+        - --limit-mm-per-prompt
+        - '{"image":0,"audio":0}'
+        - --download-dir
+        - /data/hf
+        - --enable-prefix-caching
+        env:
+        - name: HF_HOME
+          value: /data/hf
+        - name: HUGGINGFACE_HUB_CACHE
+          value: /data/hf/hub
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: HF_TOKEN
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: GPU-83657c9e-c369-de7f-0a2d-c24d17f41a2b
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            cpu: "2"
+            memory: 48Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "12"
+            memory: 96Gi
+            nvidia.com/gpu: "1"
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 180
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        volumeMounts:
+        - name: model-cache
+          mountPath: /data/hf
+        - name: shm
+          mountPath: /dev/shm
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: gemma4-vllm-cache
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi

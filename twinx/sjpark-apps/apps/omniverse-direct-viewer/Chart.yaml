@@ -1,0 +1,6 @@
+apiVersion: v2
+name: omniverse-direct-viewer
+description: Minimal full-screen Omniverse Direct WebRTC viewer for Twinx
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

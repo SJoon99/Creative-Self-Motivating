@@ -1,0 +1,59 @@
+{{- range $name, $app := .Values.applications }}
+{{- if $app.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.argo.namespace | default "argocd" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $app.syncWave | default "0" | quote }}
+spec:
+  project: {{ $app.project | default $.Values.argo.project | default "default" }}
+
+  {{- if $app.source.chart }}
+  sources:
+    - repoURL: {{ $app.source.repoURL }}
+      chart: {{ $app.source.chart }}
+      targetRevision: {{ $app.source.targetRevision }}
+      helm:
+        releaseName: {{ $app.source.helm.releaseName | default $name }}
+        valueFiles:
+        {{- range $path := $app.source.helm.valueFiles }}
+        - $values/{{ $path }}
+        {{- end }}
+    - repoURL: {{ $.Values.argo.sourceRepo.url }}
+      targetRevision: {{ $.Values.argo.sourceRepo.branch }}
+      ref: values
+  {{- else }}
+  source:
+    repoURL: {{ $.Values.argo.sourceRepo.url }}
+    targetRevision: {{ $.Values.argo.sourceRepo.branch }}
+    path: {{ $app.source.path }}
+    {{- if $app.source.directory }}
+    directory:
+      {{- toYaml $app.source.directory | nindent 6 }}
+    {{- end }}
+    {{- if $app.source.kustomize }}
+    kustomize:
+      {{- toYaml $app.source.kustomize | nindent 6 }}
+    {{- end }}
+  {{- end }}
+
+  destination:
+    server: {{ $.Values.argo.server | default "https://kubernetes.default.svc" }}
+    namespace: {{ $app.namespace }}
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Validate=false
+      {{- if $app.syncOptions }}
+      {{- toYaml $app.syncOptions | nindent 6 }}
+      {{- end }}
+{{- end }}
+{{- end }}

@@ -82,6 +82,19 @@ Omniverse 기반 SmartFarm Digital Twin POC.
 - 별도 portal UI 없이 Connect Stream 역할만 수행
 - TwinX 내부망에서 LoadBalancer 형태로 배포할 수 있도록 Helm chart 포함
 
+
+### 8. TwinX sjpark GitOps Apps
+
+- `twinx/sjpark-apps/`에 TwinX `sjpark` 네임스페이스용 GitOps 앱 묶음 포함
+- 포함 대상:
+  - Gemma vLLM backend/auth proxy/cloudflared
+  - 딸기 RAG API 서버
+  - Omniverse Direct Viewer
+  - SmartFarm web/service/Postgres 배포 manifest
+  - MIG/DRA 및 sjpark infra 보조 리소스
+- 원본 운영 위치는 `netai-sys@10.38.36.32:~/TwinX-Ops/argocd/multi-tenancy/apps/sjpark`
+- 공개 저장소에는 실제 Secret 값을 포함하지 않고 placeholder 또는 secret reference만 남김
+
 ---
 
 ## 주요 디렉터리
@@ -105,6 +118,9 @@ web/smartfarm-web/
 
 web/omniverse-direct-viewer/
   Omniverse stream 전용 direct viewer web source + Helm chart
+
+twinx/sjpark-apps/
+  TwinX sjpark namespace용 GitOps 앱 묶음
 
 services/smartfarm-service/
   SmartFarm service API POC

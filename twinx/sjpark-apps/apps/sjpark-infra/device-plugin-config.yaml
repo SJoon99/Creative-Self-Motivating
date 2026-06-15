@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: device-plugin-config
+  namespace: gpu-operator
+data:
+  default: |
+    version: v1
+    resources:
+      gpus:
+        - pattern: "NVIDIA RTX A6000"
+          name: "nvidia.com/gpu-a6000"
+        - pattern: "NVIDIA A100-PCIE-40GB"
+          name: "nvidia.com/gpu-a100"

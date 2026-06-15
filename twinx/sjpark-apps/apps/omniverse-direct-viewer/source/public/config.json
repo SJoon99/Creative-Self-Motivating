@@ -1,0 +1,14 @@
+{
+  "stream": {
+    "server": "10.32.214.23",
+    "signalingPort": 49100,
+    "mediaPort": 47998,
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "authenticate": true,
+    "fullscreenOnConnect": true,
+    "maxReconnects": 3,
+    "connectTimeoutMs": 15000
+  }
+}

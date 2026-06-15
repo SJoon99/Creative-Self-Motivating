@@ -1,0 +1,25 @@
+# Kyverno background-controller 권한 보강 (ClusterRole aggregation)
+#
+# 왜 필요한가:
+#   mig-dra의 pin-mig-config 정책은 mutate.targets로 Node 리소스를 patch
+#   Kyverno admission webhook은 정책 생성 시점에 background-controller가
+#   해당 동작을 수행할 권한을 갖췄는지 검증하고, 부족하면 정책 자체를 거부.
+#
+# 어떻게 동작하나:
+#   라벨 `rbac.kyverno.io/aggregate-to-background-controller: "true"` 를 단
+#   ClusterRole은 Kyverno background-controller의 기본 ClusterRole 에
+#   자동으로 합쳐진다(ClusterRole aggregation).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:mig-dra:background-controller-nodes
+  labels:
+    app.kubernetes.io/part-of: kyverno
+    app.kubernetes.io/component: background-controller
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    # mutate.targets가 동작하려면 get/update 최소.
+    # list/watch/patch는 일반적인 mutation 운영에 필요한 보강 권한.
+    verbs: ["get", "list", "watch", "update", "patch"]

@@ -1,0 +1,56 @@
+# argocd/multi-tenancy/apps/sjpark/values.yaml
+# 개인 프로젝트 공간 — 본인이 직접 관리하는 앱들을 여기에 enable/disable 토글하며 운영
+
+argo:
+    namespace: argocd
+    project: default
+    server: https://kubernetes.default.svc
+    sourceRepo:
+        url: git@github.com:SmartX-Team/TwinX-Ops.git
+        branch: main
+
+applications:
+    sjpark-infra:
+      enabled: false
+      namespace: sjpark
+      syncWave: "0"
+      project: multi-tenancy
+      source:
+        path: "argocd/multi-tenancy/apps/sjpark/apps/sjpark-infra"
+
+    gemma4-vllm:
+      enabled: true
+      namespace: sjpark
+      syncWave: "1"
+      source:
+        path: "argocd/multi-tenancy/apps/sjpark/apps/gemma4-vllm"
+
+
+    smartfarm-twin:
+      enabled: true
+      namespace: sjpark
+      syncWave: "2"
+      source:
+        path: "argocd/multi-tenancy/apps/sjpark/apps/smartfarm-twin"
+
+    rag-strawberry:
+      enabled: true
+      namespace: sjpark
+      syncWave: "3"
+      source:
+        path: "argocd/multi-tenancy/apps/sjpark/apps/rag-strawberry"
+
+    omniverse-direct-viewer:
+      enabled: true
+      namespace: sjpark
+      syncWave: "4"
+      source:
+        path: "argocd/multi-tenancy/apps/sjpark/apps/omniverse-direct-viewer"
+
+    mig-dra:
+      enabled: false
+      namespace: sjpark
+      syncWave: "0"
+      project: multi-tenancy
+      source:
+        path: "argocd/multi-tenancy/apps/sjpark/apps/mig-dra"

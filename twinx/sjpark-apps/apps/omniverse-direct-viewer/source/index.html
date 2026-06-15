@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#020617" />
+    <title>TwinX Omniverse Direct Viewer</title>
+  </head>
+  <body>
+    <main id="app" class="viewer-shell">
+      <section id="main-div" class="stream-stage" tabindex="0" aria-label="Omniverse stream viewport">
+        <video id="remote-video" class="stream-video" playsinline muted autoplay></video>
+        <audio id="remote-audio" muted></audio>
+      </section>
+
+      <div id="overlay" class="connect-overlay">
+        <div class="connect-card">
+          <p id="status-pill" class="status-pill status-pill--idle">STREAM IDLE</p>
+          <h1>Omniverse Direct Stream</h1>
+          <p id="endpoint" class="endpoint">Loading stream endpoint…</p>
+          <button id="connect-button" class="connect-button" type="button">Connect Stream</button>
+          <button id="disconnect-button" class="disconnect-button hidden" type="button">Disconnect</button>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

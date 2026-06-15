@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gemma4-vllm-auth-proxy-config
+  namespace: sjpark
+data:
+  default.conf.template: |
+    server {
+      listen 8000;
+      server_name _;
+      client_max_body_size 32m;
+
+      location = /readyz {
+        access_log off;
+        return 200 "ok\n";
+      }
+
+      location / {
+        if ($http_authorization != "Bearer ${API_TOKEN}") {
+          add_header WWW-Authenticate 'Bearer realm="gemma4-vllm"' always;
+          return 401;
+        }
+
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization "";
+        proxy_pass http://gemma4-vllm-backend.sjpark.svc.cluster.local:8000;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma4-vllm
+  namespace: sjpark
+spec:
+  selector:
+    app: gemma4-vllm-auth-proxy
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma4-vllm-auth-proxy
+  namespace: sjpark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma4-vllm-auth-proxy
+  template:
+    metadata:
+      labels:
+        app: gemma4-vllm-auth-proxy
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.29-alpine
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gemma4-vllm-api-token
+              key: API_TOKEN
+        ports:
+        - containerPort: 8000
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/nginx/templates/default.conf.template
+          subPath: default.conf.template
+      volumes:
+      - name: config
+        configMap:
+          name: gemma4-vllm-auth-proxy-config

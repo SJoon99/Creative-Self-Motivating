@@ -1,0 +1,125 @@
+# mig-dra: sv4000-1 A100 MIG 프로파일을 GitOps로 관리
+#
+# 구성 — 두 가지 path 병행
+#   1) Kyverno ClusterPolicy (selfHeal 의도)
+#        - 사용자가 라벨을 떼면 자동 복구하도록.
+#        - 다만 Kyverno 1.17.1에서 cluster-scope mutate-existing이 UR을
+#          만들지 않는 회귀가 있어 "라벨 박는 실제 동작"은 아직 안 됨.
+#   2) ArgoCD Hook Job (primary path)
+#        - 매 sync 시점에 kubectl label로 노드 라벨 강제.
+#        - Kyverno 회귀가 풀리거나 버전 업그레이드되면 1)이 자동 동작하기
+#          시작하므로 그 때 본 파일에서 Job 블록만 제거하면 됨.
+# ---------------------------------------------------------------------------
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pin-mig-config
+  annotations:
+    policies.kyverno.io/title: Pin per-node nvidia.com/mig.config
+    policies.kyverno.io/description: >-
+      GitOps source-of-truth for per-node MIG profile selection.
+      The label change is detected by gpu-operator's mig-manager,
+      which performs the actual GPU reset and instance partitioning.
+spec:
+  # admission: 새 요청에도 정책 적용 (Node 리소스는 admission 호출이 드물지만 켜둠)
+  admission: true
+  # background: 기존 Node 리소스도 background-controller가 주기적으로 reconcile
+  #             (사용자가 라벨을 떼도 자동 복구되는 self-heal 효과)
+  background: true
+  rules:
+    # [1] sv4000-1 노드의 nvidia.com/mig.config 라벨을 all-balanced 로 고정
+    #     all-balanced (A100-40GB): 1g.5gb x2 + 2g.10gb x1 + 3g.20gb x1
+    #     → 동시에 작은/중간/큰 슬라이스를 하나의 GPU에서 공존 사용
+    - name: sv4000-1-mig-balanced
+      # mutate-existing 동작 보장: background-controller scan에서 skip하지 않도록
+      # 명시적으로 false. (Kyverno가 기본값으로 true를 박을 수 있어 강제 지정)
+      skipBackgroundRequests: false
+      match:
+        any:
+          - resources:
+              kinds: [Node]            # cluster-scope Node 리소스
+              names: [sv4000-1]        # sv4000-1 한 노드만 대상
+      mutate:
+        # mutate.existing 모드 — 정책이 적용되거나 갱신되는 즉시
+        # 기존 Node 리소스에 대해 한 번 reconcile 실행
+        mutateExistingOnPolicyUpdate: true
+        targets:
+          # patch 대상을 명시 (cluster-scope 리소스 patch는 targets 필수)
+          - apiVersion: v1
+            kind: Node
+            name: sv4000-1
+        patchStrategicMerge:
+          metadata:
+            labels:
+              # 이 한 줄이 핵심. mig-manager 가 이 값을 보고
+              # default-mig-parted-config CM에 정의된 동명의 프로파일을 찾아 적용.
+              nvidia.com/mig.config: all-balanced
+
+---
+# Job 전용 ServiceAccount — sjpark 네임스페이스 안에서 실행되지만
+# 노드 라벨 patch는 cluster-scope이라 ClusterRoleBinding 으로 권한 부여.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mig-dra-node-labeler
+  namespace: sjpark
+
+---
+# 노드 라벨 patch에 필요한 최소 권한 — get/patch on v1/Node
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mig-dra-node-labeler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mig-dra-node-labeler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mig-dra-node-labeler
+subjects:
+  - kind: ServiceAccount
+    name: mig-dra-node-labeler
+    namespace: sjpark
+
+---
+# ArgoCD Sync hook — 매 sync 시 실행되어 sv4000-1 라벨을 GitOps 값으로 강제.
+#   - hook=Sync                   : 매 sync 시 실행
+#   - hook-delete-policy          : 새 Job 생성 직전 옛 Job 삭제 (history는 마지막 것만 남음)
+#   - ttlSecondsAfterFinished     : 성공한 Job pod 10분 후 자동 정리
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pin-sv4000-1-mig-config
+  namespace: sjpark
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: mig-dra-node-labeler
+      restartPolicy: OnFailure
+      containers:
+        - name: label
+          # bitnami/kubectl tag scheme: major.minor 만으로는 매칭 안 됨.
+          # latest는 항상 최신 안정. 학습/일회성 Job 용도라 충분.
+          image: bitnami/kubectl:latest
+          imagePullPolicy: Always
+          command:
+            - kubectl
+            - label
+            - node
+            - sv4000-1
+            - nvidia.com/mig.config=all-balanced
+            - --overwrite

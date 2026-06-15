@@ -1,0 +1,39 @@
+replicaCount: 1
+
+image:
+  repository: nginx
+  tag: 1.29-alpine
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: LoadBalancer
+  port: 80
+  loadBalancerIP: 10.38.38.244
+  annotations: {}
+
+stream:
+  server: 10.32.214.23
+  signalingPort: 49100
+  mediaPort: 47998
+  width: 1920
+  height: 1080
+  fps: 60
+  authenticate: true
+  fullscreenOnConnect: true
+  maxReconnects: 3
+  connectTimeoutMs: 15000
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

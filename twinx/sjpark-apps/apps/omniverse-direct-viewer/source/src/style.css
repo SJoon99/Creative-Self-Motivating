@@ -1,0 +1,140 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #020617;
+  color: #e5f3ff;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #020617;
+}
+
+.viewer-shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at 50% 42%, rgba(14, 165, 233, 0.22), transparent 42%), #020617;
+}
+
+.stream-stage,
+.stream-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.stream-video {
+  object-fit: contain;
+  outline: none;
+}
+
+.connect-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.48), rgba(2, 6, 23, 0.82)),
+    radial-gradient(circle at 50% 20%, rgba(56, 189, 248, 0.22), transparent 36%);
+  transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.connect-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.connect-card {
+  width: min(520px, calc(100vw - 48px));
+  padding: 36px;
+  text-align: center;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 28px;
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 118px;
+  margin: 0 0 18px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
+.status-pill--connecting { background: rgba(56, 189, 248, 0.2); color: #7dd3fc; }
+.status-pill--connected { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+.status-pill--error { background: rgba(248, 113, 113, 0.2); color: #fca5a5; }
+
+h1 {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 0.96;
+  letter-spacing: -0.05em;
+}
+
+.endpoint {
+  color: #b7c6d8;
+  line-height: 1.6;
+}
+
+.endpoint {
+  margin: 18px 0 28px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+}
+
+.connect-button,
+.disconnect-button {
+  appearance: none;
+  width: 100%;
+  border: 0;
+  border-radius: 18px;
+  padding: 18px 24px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  color: #00111f;
+  background: linear-gradient(135deg, #38bdf8, #bef264 88%);
+  box-shadow: 0 18px 42px rgba(56, 189, 248, 0.22);
+}
+
+.disconnect-button {
+  margin-top: 12px;
+  color: #e5e7eb;
+  background: rgba(148, 163, 184, 0.18);
+  box-shadow: none;
+}
+
+.connect-button:disabled,
+.disconnect-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.hidden { display: none !important; }
+
+body.connected .connect-overlay {
+  background: linear-gradient(180deg, transparent 0%, rgba(2, 6, 23, 0.08) 100%);
+}

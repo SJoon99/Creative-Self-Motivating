@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared-vllm
+  namespace: sjpark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared-vllm
+  template:
+    metadata:
+      labels:
+        app: cloudflared-vllm
+    spec:
+      serviceAccountName: sjpark-sa
+      containers:
+      - name: cloudflared
+        image: cloudflare/cloudflared:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - tunnel
+        - --no-autoupdate
+        - run
+        - --token
+        - $(TUNNEL_TOKEN)
+        env:
+        - name: TUNNEL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cloudflared-vllm-token
+              key: TUNNEL_TOKEN
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

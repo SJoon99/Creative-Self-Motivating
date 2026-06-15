@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sjpark
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sjpark-sa
+  namespace: sjpark
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sjpark-sa-secret
+  namespace: sjpark
+  annotations:
+    kubernetes.io/service-account.name: sjpark-sa
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sjpark-sa-admin-binding
+  namespace: sjpark
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+- kind: ServiceAccount
+  name: sjpark-sa
+  namespace: sjpark
+---
+# 클러스터 인프라 조회를 위한 통합 ClusterRole 생성
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-infrastructure-viewer
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "persistentvolumes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list", "watch"]
+---
+# 서비스 어카운트에 인프라 조회 및 기본 view 권한 부여
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sjpark-sa-global-view-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-infrastructure-viewer
+subjects:
+- kind: ServiceAccount
+  name: sjpark-sa
+  namespace: sjpark
+---
+# 기존 기본 view 권한도 함께 유지
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sjpark-sa-standard-view-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+- kind: ServiceAccount
+  name: sjpark-sa
+  namespace: sjpark

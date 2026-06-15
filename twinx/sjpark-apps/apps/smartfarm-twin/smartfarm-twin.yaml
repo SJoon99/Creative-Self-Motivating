@@ -1,0 +1,288 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smartfarm-postgres-secret
+  namespace: sjpark
+type: Opaque
+stringData:
+  # Public mirror placeholder only. Real TwinX credentials must be created in-cluster.
+  POSTGRES_PASSWORD: "<set-in-cluster-secret>"
+  DATABASE_URL: "postgresql://smartfarm:<set-in-cluster-secret>@smartfarm-postgres.sjpark.svc.cluster.local:5432/smartfarm"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smartfarm-postgres-data
+  namespace: sjpark
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rook-ceph-block
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartfarm-postgres
+  namespace: sjpark
+spec:
+  type: NodePort
+  clusterIP: 10.234.42.46
+  selector:
+    app: smartfarm-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      nodePort: 30432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smartfarm-postgres
+  namespace: sjpark
+spec:
+  serviceName: smartfarm-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smartfarm-postgres
+  template:
+    metadata:
+      labels:
+        app: smartfarm-postgres
+    spec:
+      # Host networking keeps Postgres reachable from the host-networked service pod.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: l40s
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: smartfarm
+            - name: POSTGRES_USER
+              value: smartfarm
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smartfarm-postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "smartfarm", "-d", "smartfarm"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "smartfarm", "-d", "smartfarm"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: smartfarm-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartfarm-service
+  namespace: sjpark
+spec:
+  type: ClusterIP
+  clusterIP: 10.234.54.211
+  selector:
+    app: smartfarm-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarm-service
+  namespace: sjpark
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: smartfarm-service
+  template:
+    metadata:
+      labels:
+        app: smartfarm-service
+    spec:
+      # Host networking is intentional: TwinX pod CIDR cannot route back from the
+      # Spark workstation subnet, while the K8S node network can reach 10.32.214.23.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: l40s
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: service
+          image: ghcr.io/sjoon99/smartfarm-service:0.2.0-twinx
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KIT_BASE_URL
+              value: http://10.32.214.23:8011/smartfarm
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: smartfarm-postgres-secret
+                  key: DATABASE_URL
+            - name: HTTP_TIMEOUT
+              value: "30"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - 'import socket; s=socket.create_connection(("127.0.0.1", 8080), 3); s.close()'
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - 'import socket; s=socket.create_connection(("127.0.0.1", 8080), 3); s.close()'
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smartfarm-web-config
+  namespace: sjpark
+data:
+  config.json: |
+    {
+      "facilityId": "smartfarm-spark-a7ce",
+      "facilityName": "Spark A7CE Seolhyang Reference Greenhouse",
+      "apiBaseUrl": "/api",
+      "defaultView": "kiosk",
+      "stream": {
+        "source": "local",
+        "server": "10.32.214.23",
+        "streamUrl": "http://10.32.214.23:8011",
+        "signalingPath": "",
+        "width": 1920,
+        "height": 1080,
+        "mediaPort": 47998
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartfarm-web
+  namespace: sjpark
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.38.38.240
+  selector:
+    app: smartfarm-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarm-web
+  namespace: sjpark
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: smartfarm-web
+  template:
+    metadata:
+      labels:
+        app: smartfarm-web
+    spec:
+      # Host networking is intentional for the demo path: the host network can
+      # reach the local smartfarm-service on 127.0.0.1:8080 and is reachable
+      # from the TwinX internal LAN as http://10.38.38.97/.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: l40s
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: web
+          image: ghcr.io/sjoon99/smartfarm-web:0.2.7-twinx
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            exec:
+              command:
+                - wget
+                - -qO-
+                - http://127.0.0.1/healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - wget
+                - -qO-
+                - http://127.0.0.1/healthz
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: smartfarm-web-config
