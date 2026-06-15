@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "omniverse-direct-viewer.fullname" . }}-html
+  labels:
+    {{- include "omniverse-direct-viewer.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "stream": {
+        "server": {{ .Values.stream.server | quote }},
+        "signalingPort": {{ .Values.stream.signalingPort }},
+        "mediaPort": {{ .Values.stream.mediaPort }},
+        "width": {{ .Values.stream.width }},
+        "height": {{ .Values.stream.height }},
+        "fps": {{ .Values.stream.fps }},
+        "authenticate": {{ .Values.stream.authenticate }},
+        "fullscreenOnConnect": {{ .Values.stream.fullscreenOnConnect }},
+        "maxReconnects": {{ .Values.stream.maxReconnects }},
+        "connectTimeoutMs": {{ .Values.stream.connectTimeoutMs }}
+      }
+    }
+{{- range $path, $_ := .Files.Glob "files/dist/**" }}
+  {{ trimPrefix "files/dist/" $path | quote }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}

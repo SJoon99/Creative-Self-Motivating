@@ -1,0 +1,27 @@
+[package]
+title = "Smart Farm OmniOps"
+version = "0.1.0"
+description = "Omniverse-first operator UI for the strawberry smart farm digital twin. Web is treated as a streaming viewer only."
+category = "Digital Twin"
+keywords = ["kit", "smart farm", "digital twin", "strawberry", "operator ui", "omniverse-first"]
+readme = "docs/README.md"
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.kit.renderer.capture" = {}
+"omni.kit.widget.viewport" = {}
+"omni.kit.viewport.window" = {}
+"omni.usd" = {}
+"joon.smartfarm.twin" = {}
+
+[settings]
+
+[[python.module]]
+name = "joon.smartfarm.omniops"
+
+[documentation]
+pages = ["docs/README.md"]
+
+[[test]]
+dependencies = ["omni.kit.test", "omni.kit.ui_test"]
+args = []

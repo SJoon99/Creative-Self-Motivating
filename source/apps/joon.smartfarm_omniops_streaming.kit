@@ -1,0 +1,47 @@
+[package]
+title = "SmartFarm OmniOps Streaming"
+version = "0.1.0"
+description = "WebRTC streaming wrapper for the Omniverse-first SmartFarm OmniOps app. Browser is a screen viewer only."
+keywords = ["experience", "app", "usd", "streaming", "smartfarm"]
+
+[dependencies]
+"joon.smartfarm_omniops" = {}
+"omni.kit.livestream.app" = {}
+
+[settings.app]
+fastShutdown = true
+name = "SmartFarm OmniOps Streaming"
+renderer.skipWhileMinimized = true
+renderer.resolution.width = 1920
+renderer.resolution.height = 1080
+useFabricSceneDelegate = false
+vsync = false
+window.width = 1920
+window.height = 1080
+
+[settings.app.extensions]
+registryEnabled = true
+supportedTargets.platform = []
+excluded = ["omni.kit.developer.bundle"]
+
+[settings.app.exts.folders]
+'++' = [
+    "${app}/../apps",
+    "${app}/../exts",
+    "${app}/../extscache"
+]
+
+[settings.app.file]
+ignoreUnsavedOnExit = true
+
+[settings.app.livestream]
+maxPushStreamDataAttempts = 1
+skipCapture = 1
+webrtcEtli = true
+
+[settings.app.rendergraph]
+maxFramesInFlight = 2
+
+[settings.exts."omni.kit.renderer.core"]
+present.enabled = true
+present.presentAfterRendering = true

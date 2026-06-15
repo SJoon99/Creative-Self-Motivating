@@ -1,0 +1,14 @@
+{
+  "facilityId": "smartfarm-v1",
+  "facilityName": "Seolhyang Reference Greenhouse",
+  "apiBaseUrl": "/api",
+  "stream": {
+    "source": "local",
+    "server": "10.34.21.100",
+    "streamUrl": "http://10.34.21.100:8011",
+    "signalingPath": "",
+    "width": 1920,
+    "height": 1080,
+    "mediaPort": 47998
+  }
+}

@@ -1,0 +1,26 @@
+# runtime artifacts
+logs/
+figure/
+*.etli
+*.webm
+*.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Node
+node_modules/
+dist/
+
+# Omniverse/local build
+_build/
+_repo/
+.omx/
+.cache/
+.local/
+.nvidia-omniverse/
+.omniverse_eula_accepted.txt
+
+# large external asset packs intentionally excluded
+source/extensions/joon.smartfarm.twin/assets/official/

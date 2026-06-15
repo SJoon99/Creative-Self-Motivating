@@ -1,0 +1,20 @@
+{
+  "name": "omniverse-direct-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Minimal full-screen Omniverse direct WebRTC stream connector for Twinx.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host 0.0.0.0 --port 4174"
+  },
+  "dependencies": {
+    "@nvidia/omniverse-webrtc-streaming-library": "5.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
