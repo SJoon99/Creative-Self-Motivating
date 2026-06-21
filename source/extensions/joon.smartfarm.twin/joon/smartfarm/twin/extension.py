@@ -254,6 +254,7 @@ BLUEPRINT_SERVICE_SUMMARY = {
 }
 PLANNING_REFERENCE_DATE = date(2026, 10, 23)
 PLANNER_VERSION = "synthetic-deterministic-planner-v2"
+PLANNING_CONTRACT_VERSION = "smartfarm-planning-run-v2"
 BASELINE_HARVEST_DAY = 75
 PLANNING_MAX_HORIZON_DAYS = 90
 HARVEST_MATURITY_THRESHOLD = 0.92
@@ -261,6 +262,13 @@ MIN_ACCEPTABLE_YIELD_SCORE = 70
 DISEASE_PRESSURE_LIMIT = 0.62
 QUALITY_GATE_MIN_SCORE = 20.0
 QUALITY_GATE_TARGET_SCORE = 25.0
+PLANNING_OBJECTIVE_WEIGHTS = {
+    "earliestShipment": 0.36,
+    "yield": 0.24,
+    "diseaseControl": 0.22,
+    "opex": 0.10,
+    "actuatorSafety": 0.08,
+}
 
 
 def _clamp(value, minimum, maximum):
@@ -492,22 +500,41 @@ def _simulate_to_harvest(base_sensor, base_crop, actuator, blueprint_id="project
     disease_penalty += crop["diseasePressure"] * 30.0
     unsafe_harvest_penalty = 22.0 if harvest_day >= PLANNING_MAX_HORIZON_DAYS else 0.0
     cost_saving_bonus = min(max(0, -opex_delta), 8) * 0.30
+    early_shipment_bonus = days_earlier * 1.4
+    yield_contribution = yield_score * 0.65
+    positive_opex_penalty = max(0, opex_delta) * 0.40
+    disease_context_adjustment = 0.0
     score = (
-        days_earlier * 1.4
-        + yield_score * 0.65
+        early_shipment_bonus
+        + yield_contribution
         + cost_saving_bonus
-        - max(0, opex_delta) * 0.40
+        - positive_opex_penalty
         - disease_penalty
         - unsafe_harvest_penalty
     )
     if base_crop.get("diseasePressure", 0.0) >= 0.62:
         if "disease-safe" in blueprint_id or "disease_safe" in blueprint_id:
-            score += 18.0
+            disease_context_adjustment = 18.0
         elif "low-cost" in blueprint_id or "low_cost" in blueprint_id:
-            score -= 20.0
+            disease_context_adjustment = -20.0
         elif ("early-shipment" in blueprint_id or "early_shipment" in blueprint_id) and harvest_day - day <= 5:
-            score -= 8.0
+            disease_context_adjustment = -8.0
+    raw_score = score + disease_context_adjustment
+    score = raw_score
     score = round(_clamp(score, 0.0, 100.0), 1)
+    score_breakdown = {
+        "daysEarlier": days_earlier,
+        "earlyShipmentBonus": round(early_shipment_bonus, 1),
+        "yieldContribution": round(yield_contribution, 1),
+        "costSavingBonus": round(cost_saving_bonus, 1),
+        "opexPenalty": round(positive_opex_penalty, 1),
+        "diseasePenalty": round(disease_penalty, 1),
+        "unsafeHarvestPenalty": round(unsafe_harvest_penalty, 1),
+        "diseaseContextAdjustment": round(disease_context_adjustment, 1),
+        "rawScore": round(raw_score, 1),
+        "finalScore": score,
+        "formula": "clamp(ship + yield + cost - opex - disease - safety + context, 0, 100)",
+    }
     return {
         "harvestDay": harvest_day,
         "shipmentDate": _shipment_date_for_day(harvest_day),
@@ -516,6 +543,7 @@ def _simulate_to_harvest(base_sensor, base_crop, actuator, blueprint_id="project
         "diseaseRisk": disease,
         "riskNote": f"Projected disease pressure {crop['diseasePressure']:.2f}; rolling horizon score {score:.1f}.",
         "score": score,
+        "scoreBreakdown": score_breakdown,
         "dailyStates": daily,
         "finalCropState": {
             "day": int(crop["day"]),
@@ -2520,6 +2548,7 @@ class MyExtension(omni.ext.IExt):
 
         plan_slot_rotation = self._planning_run_seq % 3
         candidates = assign_rotating_plan_slots(candidates, rotation=plan_slot_rotation)
+        self._refresh_candidate_branch_slots(candidates)
         rag_recommended_display_id = None
         if rag_recommended_id:
             for candidate in candidates:
@@ -2535,7 +2564,19 @@ class MyExtension(omni.ext.IExt):
         self._planning_run_seq += 1
         run_id = f"ragrun-{self._planning_run_seq:04d}-{uuid.uuid4().hex[:8]}"
         top_factor = (gap_analysis.get("limitingFactors") or ["current state gap"])[0]
+        generation_criteria = self._build_generation_criteria(
+            goal,
+            constraints,
+            base_sensor,
+            base_crop,
+            vision_assessment=vision_assessment,
+            rag_advice=rag_advice,
+            gap_analysis=gap_analysis,
+            rag_request_trace=rag_request_trace,
+            quality_gate=quality_gate_summary,
+        )
         self._latest_planning_run = {
+            "contractVersion": PLANNING_CONTRACT_VERSION,
             "runId": run_id,
             "createdAt": date.today().isoformat(),
             "reason": reason,
@@ -2549,6 +2590,7 @@ class MyExtension(omni.ext.IExt):
             "baselineComparison": baseline_comparison,
             "ragAdvice": rag_advice,
             "gapAnalysis": gap_analysis,
+            "generationCriteria": generation_criteria,
             "ragRequestTrace": rag_request_trace,
             "ragRecommendedCandidateId": rag_recommended_id,
             "ragRecommendedDisplayBlueprintId": rag_recommended_display_id,
@@ -2815,6 +2857,232 @@ class MyExtension(omni.ext.IExt):
         except (TypeError, ValueError):
             return 0.0
 
+    def _readiness_percent_from_crop(self, crop_state):
+        maturity = float(crop_state.get("fruitMaturity", 0.0))
+        yield_score = float(crop_state.get("estimatedYield", 0.0))
+        disease_pressure = float(crop_state.get("diseasePressure", 0.0))
+        readiness = maturity * 62.0 + (yield_score / 100.0) * 22.0 + (1.0 - disease_pressure) * 16.0
+        return round(_clamp(readiness, 0.0, 100.0), 1)
+
+    def _trajectory_from_simulation(self, base_crop, sim):
+        start_day = int(base_crop.get("day", 0))
+        harvest_day = int(sim.get("harvestDay", start_day))
+        points = [
+            {
+                "label": "current",
+                "day": start_day,
+                "dayOffset": 0,
+                "maturityPercent": round(float(base_crop.get("fruitMaturity", 0.0)) * 100.0, 1),
+                "harvestReadinessPercent": self._readiness_percent_from_crop(base_crop),
+                "diseasePressurePercent": round(float(base_crop.get("diseasePressure", 0.0)) * 100.0, 1),
+                "yieldScore": round(float(base_crop.get("estimatedYield", 0.0)), 1),
+                "opexDeltaPercent": 0,
+            }
+        ]
+        daily_states = list(sim.get("dailyStates") or [])
+        wanted_offsets = {7, 14, 21, 28, 35, 42, 49, 56}
+        seen_days = {start_day}
+        for index, state in enumerate(daily_states):
+            day = int(state.get("day", start_day))
+            offset = max(0, day - start_day)
+            is_terminal = index == len(daily_states) - 1 or day >= harvest_day
+            if offset not in wanted_offsets and not is_terminal:
+                continue
+            if day in seen_days:
+                continue
+            seen_days.add(day)
+            crop_point = {
+                "fruitMaturity": float(state.get("fruitMaturity", 0.0)),
+                "diseasePressure": float(state.get("diseasePressure", 0.0)),
+                "estimatedYield": float(state.get("estimatedYield", 0.0)),
+            }
+            points.append(
+                {
+                    "label": "harvest" if day >= harvest_day and harvest_day < PLANNING_MAX_HORIZON_DAYS else f"D+{offset}",
+                    "day": day,
+                    "dayOffset": offset,
+                    "maturityPercent": round(crop_point["fruitMaturity"] * 100.0, 1),
+                    "harvestReadinessPercent": self._readiness_percent_from_crop(crop_point),
+                    "diseasePressurePercent": round(crop_point["diseasePressure"] * 100.0, 1),
+                    "yieldScore": round(crop_point["estimatedYield"], 1),
+                    "opexDeltaPercent": int(sim.get("opexDeltaPercent", 0)),
+                }
+            )
+            if is_terminal:
+                break
+        if len(points) > 8:
+            return points[:7] + [points[-1]]
+        return points
+
+    def _actuator_recipe_text(self, actuator):
+        return (
+            f"LED {actuator['led_intensity_percent']}%/{actuator['photoperiod_hours']}h | "
+            f"Irr {actuator['irrigation_pulses_per_day']}/day | "
+            f"Fan {actuator['fan_duty_percent']}% | CO2 {actuator['co2_ppm']} ppm"
+        )
+
+    def _branch_metadata(self, blueprint_id, name, kind, provider, rationale, actuator, sim, base_sensor, base_crop, meta):
+        days_earlier = max(0, BASELINE_HARVEST_DAY - int(sim.get("harvestDay", BASELINE_HARVEST_DAY)))
+        basis = "Gemma/RAG proposal" if "gemma" in str(provider).lower() or "rag" in str(provider).lower() else "Twin deterministic proposal"
+        if str(kind).startswith("baseline"):
+            basis = "Current Twin baseline"
+        drivers = []
+        if float(base_sensor.get("dli_mol_m2_day", 16.0)) < 14.0:
+            drivers.append("low DLI")
+        if float(base_sensor.get("humidity_percent", 70.0)) > 72.0:
+            drivers.append("high humidity")
+        if float(base_sensor.get("substrate_moisture_percent", 44.0)) < 40.0:
+            drivers.append("low substrate moisture")
+        if float(base_crop.get("diseasePressure", 0.0)) >= DISEASE_PRESSURE_LIMIT:
+            drivers.append("high disease pressure")
+        if not drivers:
+            drivers.append("current crop state")
+        validation_passed = (
+            float(sim.get("score", 0.0)) > 0.0
+            and int(sim.get("harvestDay", PLANNING_MAX_HORIZON_DAYS)) < PLANNING_MAX_HORIZON_DAYS
+            and float((sim.get("finalCropState") or {}).get("diseasePressure", 1.0)) <= DISEASE_PRESSURE_LIMIT
+            and float(sim.get("yieldScore", 0.0)) >= MIN_ACCEPTABLE_YIELD_SCORE
+        )
+        return {
+            "branchId": blueprint_id,
+            "displaySlot": name,
+            "candidateBasis": basis,
+            "stateDrivers": drivers,
+            "whyGenerated": meta.get("operatorIntent") or rationale,
+            "actuatorRecipe": self._actuator_recipe_text(actuator),
+            "riskSummary": (
+                f"{sim.get('diseaseRisk', '-')} disease risk | OpEx {int(sim.get('opexDeltaPercent', 0)):+d}% | "
+                f"{sim.get('riskNote', '')}"
+            ),
+            "replanTrigger": (
+                "Replan when camera/readiness is >8pt below this trajectory, disease pressure crosses "
+                f"{int(DISEASE_PRESSURE_LIMIT * 100)}%, or new RAG evidence changes the limiting factor."
+            ),
+            "validationSummary": (
+                f"Twin score {float(sim.get('score', 0.0)):.1f}/100 | ship -{days_earlier}d | "
+                f"yield {int(sim.get('yieldScore', 0))}/100"
+            ),
+            "validationPassed": validation_passed,
+        }
+
+    def _vision_state_for_criteria(self, vision_assessment):
+        if not vision_assessment:
+            return {
+                "attached": False,
+                "summary": "No camera capture attached to this generation run.",
+            }
+        return {
+            "attached": True,
+            "source": vision_assessment.get("source"),
+            "provider": vision_assessment.get("provider"),
+            "visionModelStatus": vision_assessment.get("visionModelStatus"),
+            "growthProgressPercent": vision_assessment.get(
+                "growthProgressPercent", vision_assessment.get("harvestReadinessPercent")
+            ),
+            "healthScore": vision_assessment.get("healthScore"),
+            "diseaseRisk": vision_assessment.get("diseaseRisk"),
+            "phenotypeStage": vision_assessment.get("phenotypeStage"),
+        }
+
+    def _build_generation_criteria(
+        self,
+        goal,
+        constraints,
+        base_sensor,
+        base_crop,
+        vision_assessment=None,
+        rag_advice=None,
+        gap_analysis=None,
+        rag_request_trace=None,
+        quality_gate=None,
+    ):
+        rag_advice = rag_advice or {}
+        gap_analysis = gap_analysis or {}
+        rag_request_trace = rag_request_trace or {}
+        quality_gate = quality_gate or {}
+        sources = list(rag_advice.get("evidence") or [])
+        return {
+            "contractVersion": PLANNING_CONTRACT_VERSION,
+            "objective": goal,
+            "objectiveWeights": dict(PLANNING_OBJECTIVE_WEIGHTS),
+            "scoreFormula": {
+                "activePath": "planning_run_candidates",
+                "planningRunCandidateFormula": (
+                    "clamp(daysEarlier * 1.4 + yieldScore * 0.65 + costSavingBonus "
+                    "- positiveOpexDelta * 0.40 - diseasePenalty - unsafeHarvestPenalty "
+                    "+ disease-context adjustment, 0, 100)"
+                ),
+                "planningRunTerms": {
+                    "costSavingBonus": "min(max(0, -opexDeltaPercent), 8) * 0.30",
+                    "diseasePenalty": "labelPenalty(high=42, controlled=10, low=0, other=24) + diseasePressure * 30",
+                    "unsafeHarvestPenalty": "22 when harvestDay >= maxHorizonDays, else 0",
+                    "diseaseContextAdjustment": (
+                        "+18 for disease-safe under high baseline pressure; -20 for low-cost under high baseline pressure; "
+                        "-8 for early-shipment when high baseline pressure and harvest is within 5 days"
+                    ),
+                },
+                "staticFallbackFormula": (
+                    "clamp(yieldScore + daysEarlier * 0.80 + costSavingBonus "
+                    "- positiveOpexDelta * 0.25 - diseasePenalty - LEDStressPenalty, 0, 100)"
+                ),
+                "staticFallbackTerms": {
+                    "costSavingBonus": "max(0, -opexPercent) * 0.20",
+                    "diseasePenalty": "riskPenalty(high=18, controlled=3, low=0, other=8)",
+                    "LEDStressPenalty": "max(0, ledIntensityPercent - 80) * 0.08",
+                },
+                "note": (
+                    "Generation uses the planning-run candidate formula. The static fallback formula is listed only "
+                    "for pre-generation UI rows when no planningRun exists."
+                ),
+            },
+            "usedSensorState": self._sensor_state_response(base_sensor),
+            "usedCropState": {
+                "day": int(base_crop.get("day", 0)),
+                "fruitMaturityPercent": round(float(base_crop.get("fruitMaturity", 0.0)) * 100.0, 1),
+                "diseasePressurePercent": round(float(base_crop.get("diseasePressure", 0.0)) * 100.0, 1),
+                "estimatedYield": round(float(base_crop.get("estimatedYield", 0.0)), 1),
+            },
+            "usedVisionState": self._vision_state_for_criteria(vision_assessment),
+            "ragDocsCount": len(sources),
+            "ragProvider": rag_advice.get("provider"),
+            "ragModel": rag_advice.get("model"),
+            "ragEndpoint": rag_request_trace.get("path"),
+            "gapFactors": list(gap_analysis.get("limitingFactors") or [])[:4],
+            "constraints": constraints or {},
+            "twinValidation": {
+                "horizonDays": PLANNING_MAX_HORIZON_DAYS,
+                "harvestMaturityThresholdPercent": int(round(HARVEST_MATURITY_THRESHOLD * 100)),
+                "minYieldScore": MIN_ACCEPTABLE_YIELD_SCORE,
+                "diseasePressureLimitPercent": int(round(DISEASE_PRESSURE_LIMIT * 100)),
+                "scoreBasis": "earlier shipment + yield - OpEx - disease/safety penalties, then Twin quality gate",
+            },
+            "qualityGate": {
+                "mode": quality_gate.get("mode", "none"),
+                "minViableScore": quality_gate.get("minViableScore", QUALITY_GATE_MIN_SCORE),
+                "repairedCount": quality_gate.get("repairedCount", 0),
+            },
+            "branchingPolicy": {
+                "mode": "branch_candidates_then_replan",
+                "description": "Plan A/B/C are neutral branch slots; applying one does not erase the others.",
+                "replanTriggers": [
+                    "camera/readiness >8pt below branch trajectory",
+                    f"disease pressure >{int(DISEASE_PRESSURE_LIMIT * 100)}%",
+                    "new RAG evidence or sensor gap changes limiting factor",
+                ],
+            },
+        }
+
+    def _refresh_candidate_branch_slots(self, candidates):
+        for candidate in candidates:
+            branch = candidate.get("branch")
+            if isinstance(branch, dict):
+                branch["branchId"] = candidate.get("id") or candidate.get("blueprintId")
+                branch["displaySlot"] = candidate.get("name") or candidate.get("label")
+                if candidate.get("sourceCandidateId"):
+                    branch["sourceCandidateId"] = candidate.get("sourceCandidateId")
+                if candidate.get("sourceScoreRank"):
+                    branch["sourceScoreRank"] = candidate.get("sourceScoreRank")
+
     def _run_daily_planning(self, reason="manual"):
         """POC deterministic replacement for the future Gemma/RAG planner.
 
@@ -2838,7 +3106,16 @@ class MyExtension(omni.ext.IExt):
 
         self._planning_run_seq += 1
         run_id = f"planrun-{self._planning_run_seq:04d}-{uuid.uuid4().hex[:8]}"
+        generation_criteria = self._build_generation_criteria(
+            "deterministic_daily_planning",
+            {},
+            base_sensor,
+            base_crop,
+            rag_advice={"provider": PLANNER_VERSION, "model": "local-twin-simulator", "evidence": []},
+            gap_analysis={"limitingFactors": [_growth_limiting_factor(base_sensor)]},
+        )
         self._latest_planning_run = {
+            "contractVersion": PLANNING_CONTRACT_VERSION,
             "runId": run_id,
             "createdAt": date.today().isoformat(),
             "reason": reason,
@@ -2847,6 +3124,7 @@ class MyExtension(omni.ext.IExt):
             "gemmaRagStatus": "pending_external_pipeline",
             "currentSensorState": self._sensor_state_response(base_sensor),
             "currentCropState": base_crop,
+            "generationCriteria": generation_criteria,
             "recommendedBlueprintId": recommended_id,
             "candidates": candidates,
             "decisionRationale": (
@@ -2898,11 +3176,14 @@ class MyExtension(omni.ext.IExt):
         sensor_target = _sensor_from_actuator(base_sensor, sim["finalCropState"], actuator, blueprint_id)
         horizon = max(1, int(sim["harvestDay"]) - int(base_crop["day"]))
         rationale = meta.get("rationale") or self._planning_rationale(blueprint_id, base_sensor, sim, actuator)
+        provider = meta.get("provider", "synthetic-deterministic")
+        trajectory = self._trajectory_from_simulation(base_crop, sim)
+        branch = self._branch_metadata(blueprint_id, name, kind, provider, rationale, actuator, sim, base_sensor, base_crop, meta)
         candidate = {
             "id": blueprint_id,
             "blueprintId": blueprint_id,
             "kind": kind,
-            "provider": meta.get("provider", "synthetic-deterministic"),
+            "provider": provider,
             "name": name,
             "tagline": tagline,
             "horizonDays": horizon,
@@ -2931,6 +3212,7 @@ class MyExtension(omni.ext.IExt):
             },
             "recommended": False,
             "score": sim["score"],
+            "scoreBreakdown": sim.get("scoreBreakdown", {}),
             "rationale": rationale,
             "operatorIntent": meta.get("operatorIntent", rationale),
             "controlFocus": meta.get("controlFocus", ""),
@@ -2939,10 +3221,13 @@ class MyExtension(omni.ext.IExt):
             "ragEvidence": meta.get("ragEvidence", []),
             "ragAdvice": meta.get("ragAdvice"),
             "gapAnalysis": meta.get("gapAnalysis"),
+            "branch": branch,
+            "trajectory": trajectory,
             "simulation": {
                 "startDay": int(base_crop["day"]),
                 "harvestDay": sim["harvestDay"],
                 "maxHorizonDays": PLANNING_MAX_HORIZON_DAYS,
+                "scoreBreakdown": sim.get("scoreBreakdown", {}),
                 "dailyStates": sim["dailyStates"],
                 "finalCropState": sim["finalCropState"],
             },
@@ -3048,6 +3333,7 @@ class MyExtension(omni.ext.IExt):
                     "tradeoff": candidate.get("tradeoff") or summary.get("tradeoff", ""),
                     "provider": candidate.get("provider", summary.get("source", "")),
                     "score": candidate.get("score", 0),
+                    "scoreBreakdown": candidate.get("scoreBreakdown", {}),
                     "expectedShipment": prediction.get("shipmentDate"),
                     "yieldScore": prediction.get("yieldScore"),
                     "opex": f"{prediction.get('opexDeltaPercent', 0):+d}% electricity/water",
@@ -3056,6 +3342,12 @@ class MyExtension(omni.ext.IExt):
                     "rationale": candidate.get("rationale", ""),
                     "ragEvidence": candidate.get("ragEvidence", []),
                     "gapAnalysis": candidate.get("gapAnalysis"),
+                    "predicted": prediction,
+                    "actuatorTarget": candidate.get("actuatorTarget", {}),
+                    "sensorTarget": candidate.get("sensorTarget", {}),
+                    "branch": candidate.get("branch", {}),
+                    "trajectory": candidate.get("trajectory", []),
+                    "simulation": candidate.get("simulation", {}),
                 })
             if candidates:
                 return sorted(candidates, key=lambda item: item["score"], reverse=True)
@@ -3077,7 +3369,8 @@ class MyExtension(omni.ext.IExt):
         cost_saving_bonus = max(0.0, -opex_percent) * 0.20
         early_shipment_bonus = days_earlier * 0.80
         actuator_stress_penalty = max(0.0, actuator["led_intensity_percent"] - 80) * 0.08
-        score = yield_score + early_shipment_bonus + cost_saving_bonus - energy_penalty - disease_penalty - actuator_stress_penalty
+        raw_score = yield_score + early_shipment_bonus + cost_saving_bonus - energy_penalty - disease_penalty - actuator_stress_penalty
+        score = raw_score
         score = round(max(0.0, min(100.0, score)), 1)
         return {
             "blueprintId": blueprint_id,
@@ -3087,6 +3380,19 @@ class MyExtension(omni.ext.IExt):
             "controlFocus": summary.get("control_focus", ""),
             "tradeoff": summary.get("tradeoff", ""),
             "score": score,
+            "scoreBreakdown": {
+                "daysEarlier": days_earlier,
+                "earlyShipmentBonus": round(early_shipment_bonus, 1),
+                "yieldContribution": round(yield_score, 1),
+                "costSavingBonus": round(cost_saving_bonus, 1),
+                "opexPenalty": round(energy_penalty, 1),
+                "diseasePenalty": round(disease_penalty, 1),
+                "unsafeHarvestPenalty": round(actuator_stress_penalty, 1),
+                "diseaseContextAdjustment": 0.0,
+                "rawScore": round(raw_score, 1),
+                "finalScore": score,
+                "formula": "static fallback: yield + ship + cost - opex - disease - LED stress",
+            },
             "expectedShipment": summary["expected_shipment"],
             "yieldScore": summary["yield_score"],
             "opex": summary["opex"],
@@ -3144,6 +3450,9 @@ class MyExtension(omni.ext.IExt):
         recommended = ranked[0] if ranked else None
         rag_advice = (self._latest_planning_run or {}).get("ragAdvice") if self._latest_planning_run else None
         gap_analysis = (self._latest_planning_run or {}).get("gapAnalysis") if self._latest_planning_run else None
+        generation_criteria = (
+            (self._latest_planning_run or {}).get("generationCriteria") if self._latest_planning_run else None
+        )
         return {
             "ok": ok,
             "message": message,
@@ -3188,6 +3497,7 @@ class MyExtension(omni.ext.IExt):
             },
             "ragAdvice": rag_advice,
             "gapAnalysis": gap_analysis,
+            "generationCriteria": generation_criteria,
             "planningRun": self._latest_planning_run,
         }
 

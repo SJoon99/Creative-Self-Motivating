@@ -1,6 +1,6 @@
 # Creative-Self-Motivating
 
-Omniverse 기반 SmartFarm Digital Twin POC.  
+Omniverse 기반 SmartFarm Digital Twin POC.
 현재 딸기 스마트팜 상태를 Twin 환경에 Baseline으로 표현하고, Gemma/RAG가 제안한 조기 출하 Blueprint를 Twin 시뮬레이션으로 검증하는 프로젝트.
 
 ---
@@ -82,19 +82,6 @@ Omniverse 기반 SmartFarm Digital Twin POC.
 - 별도 portal UI 없이 Connect Stream 역할만 수행
 - TwinX 내부망에서 LoadBalancer 형태로 배포할 수 있도록 Helm chart 포함
 
-
-### 8. TwinX sjpark GitOps Apps
-
-- `twinx/sjpark-apps/`에 TwinX `sjpark` 네임스페이스용 GitOps 앱 묶음 포함
-- 포함 대상:
-  - Gemma vLLM backend/auth proxy/cloudflared
-  - 딸기 RAG API 서버
-  - Omniverse Direct Viewer
-  - SmartFarm web/service/Postgres 배포 manifest
-  - MIG/DRA 및 sjpark infra 보조 리소스
-- 원본 운영 위치는 `netai-sys@10.38.36.32:~/TwinX-Ops/argocd/multi-tenancy/apps/sjpark`
-- 공개 저장소에는 실제 Secret 값을 포함하지 않고 placeholder 또는 secret reference만 남김
-
 ---
 
 ## 주요 디렉터리
@@ -119,9 +106,6 @@ web/smartfarm-web/
 web/omniverse-direct-viewer/
   Omniverse stream 전용 direct viewer web source + Helm chart
 
-twinx/sjpark-apps/
-  TwinX sjpark namespace용 GitOps 앱 묶음
-
 services/smartfarm-service/
   SmartFarm service API POC
 
@@ -133,13 +117,16 @@ docs/Progess/
 
 Agent.md
   처음 보는 사람도 전체 구조와 로직을 이해할 수 있는 상세 handoff 문서
+
+docs/05-final-submission-demo-reproduction.md
+  최종 제출 ZIP/데모 영상 검증자가 그대로 따라 할 수 있는 재현 가이드
 ```
 
 ---
 
 ## Blueprint 점수의 의미
 
-Plan row의 `score /100`은 AI가 “자신 있다”고 말한 확률이 아님.  
+Plan row의 `score /100`은 AI가 “자신 있다”고 말한 확률이 아님.
 현재 Twin이 해당 plan을 실제로 적용했을 때의 결과를 단순화해 계산한 검증 점수.
 
 주요 구성:
@@ -173,9 +160,17 @@ POC 제한:
 - 실제 농장 IP camera ingestion은 아직 범위 밖
 - 실제 환경과 Twin 예측값의 장기 assimilation은 아직 범위 밖
 - image-capable Gemma 배포가 아닐 경우 vision은 fallback 분석 사용
-- 대형 NVIDIA 공식 asset은 이 repository에 포함하지 않음
+- 재현 편의를 위해 일부 대형 USD/asset이 repository에 포함되어 있어 제출 ZIP 크기가 커질 수 있음
 
 ---
+
+## 최종 제출/데모 재현 문서
+
+과제 제출용 프로젝트 ZIP과 데모 영상 검증 절차는 아래 문서에 정리되어 있다.
+
+- [docs/05-final-submission-demo-reproduction.md](./docs/05-final-submission-demo-reproduction.md)
+
+이 문서는 제3자가 같은 Omniverse/Kit app 버전에서 데모 영상을 보고 동일한 Generate → Apply → Replan → Capture 흐름을 따라 할 수 있도록 실행 명령, UI 조작 순서, 로그 확인 방법, 문제 해결 방법을 포함한다.
 
 ## 테스트
 
@@ -201,3 +196,7 @@ python3 -m unittest joon.smartfarm.omniops.tests.test_model
 8. 필요 시 `Capture & Analyze Growth`로 생육 분석 흐름 확인
 
 ---
+
+## 참고
+
+이 프로젝트는 NVIDIA Omniverse Kit App Template 기반으로 개발된 SmartFarm 특화 POC이며, 이 저장소에는 SmartFarm 구현과 관련된 핵심 소스만 정리해 보관한다.

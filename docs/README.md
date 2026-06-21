@@ -12,6 +12,7 @@ flowchart LR
     B --> C[02 빌드와 실행 흐름]
     C --> D[03 Kit 앱과 Extension]
     D --> E[04 Git 작업 흐름]
+    E --> F[05 최종 제출 데모 재현]
 ```
 
 | 문서 | 내용 | 먼저 볼 때 |
@@ -20,6 +21,7 @@ flowchart LR
 | [02-build-and-launch-flow.md](./02-build-and-launch-flow.md) | `repo.sh` 기준 동작 흐름 | "빌드/실행 때 무슨 일이?" |
 | [03-kit-app-and-extension.md](./03-kit-app-and-extension.md) | `.kit`, 앱, Extension 관계 | "Kit 구조 감 잡기" |
 | [04-git-workflow.md](./04-git-workflow.md) | 이 저장소 Git 관리 방식 | "GitHub에 어떻게 올리지?" |
+| [05-final-submission-demo-reproduction.md](./05-final-submission-demo-reproduction.md) | 최종 제출 ZIP과 데모 영상 재현 절차 | "제3자가 어떻게 똑같이 따라하지?" |
 | [Progess/2026-05-21-smartfarm-twin-poc.md](./Progess/2026-05-21-smartfarm-twin-poc.md) | 스마트팜 트윈 POC 진행 현황 | "지금 어디까지 됐지?" |
 
 ## 현재 프로젝트 핵심
