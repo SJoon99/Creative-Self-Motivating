@@ -345,7 +345,7 @@ class OmniOpsExtension(omni.ext.IExt):
                             self._apply_buttons.append(button)
                     with ui.HStack(spacing=8, height=32):
                         ui.Button("Create Current Twin", clicked_fn=lambda: self._post_scene("growth"))
-                        ui.Button("Reset Baseline", clicked_fn=lambda: self._post_scene("reset"))
+                        ui.Button("Reset Baseline", clicked_fn=lambda: self._reset_demo_baseline())
                     with ui.HStack(spacing=8, height=32):
                         ui.Button("Run Daily Planning", clicked_fn=self._run_daily_planning)
                         ui.Button("Refresh State", clicked_fn=self._load_state_from_api)
@@ -1815,7 +1815,9 @@ class OmniOpsExtension(omni.ext.IExt):
         return [dedup[label] for label in PLAN_BUTTON_LABELS if label in dedup]
 
     def _refresh_apply_buttons(self):
-        rows = self._ordered_plan_rows()
+        # Keep Plan A/B/C disabled until Generate/Planning produces real branch candidates.
+        # This prevents the demo reset state from showing stale static fallback plans.
+        rows = self._ordered_plan_rows(include_fallback=False)
         self._apply_button_blueprint_ids = []
         for idx, button in enumerate(self._apply_buttons):
             if idx < len(rows):
@@ -3718,17 +3720,62 @@ class OmniOpsExtension(omni.ext.IExt):
             return
         self._apply_blueprint(str(blueprint_id))
 
-    def _post_scene(self, scene: str):
+    def _reset_demo_baseline(self):
+        """Return the operator UI to the first-screen demo state.
+
+        Reset Baseline should be stronger than a USD timeline reset: it clears
+        generated Blueprint evidence, selected branch history, RAG trace lines,
+        and the latest vision assessment so the next demo starts from a clean
+        Baseline -> Generate -> Apply story. Runtime trace files are preserved
+        on disk for auditability, but the visible panels become fresh.
+        """
+        self._post_scene("reset", reset_demo_state=True)
+
+    def _clear_demo_runtime_state(self):
+        self._selected_blueprint = "baseline"
+        self._active_generation_run_id = None
+        self._blueprint_decision_history = []
+        self._blueprint_generation_history = []
+        self._latest_vision_assessment = None
+        self._capture_seq = 0
+        self._sensor_history = {}
+        self._decision_graph_plot_error_reported = False
+        self._rag_trace_lines = [
+            "SmartFarm RAG Trace ready. Click Generate Gemma/RAG Blueprints to capture live API evidence."
+        ]
+        self._logs = ["Demo reset: Baseline/current Twin state is ready for the first Generate step."]
+        if isinstance(self._state, dict):
+            self._state["blueprintId"] = "baseline"
+            self._state["name"] = BLUEPRINTS.get("baseline", {}).get("name", "Baseline")
+            self._state["ranked"] = []
+            self._state["ragAdvice"] = {}
+            self._state["gapAnalysis"] = {}
+            self._state["generationCriteria"] = {}
+            self._state["planningRun"] = {}
+
+    def _post_scene(self, scene: str, *, reset_demo_state: bool = False):
         try:
             payload = self._twin_payload("scene", scene=scene)
             self._state = self._normalize_api_state(payload)
+            if reset_demo_state or scene in {"reset", "growth"}:
+                self._clear_demo_runtime_state()
             self._actuator_dirty = False
             self._refresh_ui()
             self._sync_actuator_controls(self._state["actuator"], force=True)
             self._ensure_growth_camera_for_dashboard()
-            self._set_status(f"SmartFarm Twin scene/{scene} applied to existing farm scene.")
+            if reset_demo_state or scene == "reset":
+                self._set_status("Demo reset complete: Baseline/current Twin is clean; Generate starts a fresh A/B/C run.")
+            else:
+                self._set_status(f"SmartFarm Twin scene/{scene} applied to existing farm scene.")
         except Exception as exc:
-            self._set_status(f"scene/{scene} API failed. Ensure joon.smartfarm.twin service is loaded. {exc}")
+            if reset_demo_state:
+                self._state = self._fallback_state("baseline")
+                self._clear_demo_runtime_state()
+                self._actuator_dirty = False
+                self._refresh_ui()
+                self._set_status(f"Demo reset fell back to local Baseline state. Twin API unavailable: {exc}")
+            else:
+                self._set_status(f"scene/{scene} API failed. Ensure joon.smartfarm.twin service is loaded. {exc}")
 
     def _apply_blueprint(self, blueprint_id: str):
         self._selected_blueprint = blueprint_id

@@ -867,8 +867,12 @@ class MyExtension(omni.ext.IExt):
             summary="Apply manual actuator controls to the USD twin.",
         )
 
+    def _clear_planning_state(self):
+        self._latest_planning_run = None
+
     def _create_mature_scene(self):
         self._cancel_pending_simulation()
+        self._clear_planning_state()
         stage = self._get_stage()
         if stage is None:
             self._set_status("No USD stage is available yet. Create or open a stage first.")
@@ -892,6 +896,7 @@ class MyExtension(omni.ext.IExt):
 
     def _create_growth_simulation(self):
         self._cancel_pending_simulation()
+        self._clear_planning_state()
         stage = self._get_stage()
         if stage is None:
             self._set_status("No USD stage is available yet. Create or open a stage first.")
@@ -922,6 +927,7 @@ class MyExtension(omni.ext.IExt):
 
     def _reset_growth_timeline(self):
         self._cancel_pending_simulation()
+        self._clear_planning_state()
         stage = self._get_stage()
         if stage is None:
             self._set_status("No USD stage is available yet. Create or open a stage first.")
